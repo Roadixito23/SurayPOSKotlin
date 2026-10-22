@@ -16,18 +16,24 @@ import cl.suray.posbus.ui.home.Destination
 import cl.suray.posbus.ui.home.HomeScreen
 import cl.suray.posbus.ui.home.HomeViewModel
 import cl.suray.posbus.ui.login.LoginScreen
+import cl.suray.posbus.ui.backup.BackupScreen
+import cl.suray.posbus.ui.backup.BackupViewModel
 import cl.suray.posbus.ui.recovery.RecoveryScreen
 import cl.suray.posbus.ui.stats.StatsScreen
 import cl.suray.posbus.ui.stats.StatsViewModel
 import cl.suray.posbus.ui.recovery.RecoveryViewModel
 import cl.suray.posbus.ui.report.ReportScreen
 import cl.suray.posbus.ui.report.ReportViewModel
+import cl.suray.posbus.ui.settings.ButtonColorsScreen
+import cl.suray.posbus.ui.settings.ButtonColorsViewModel
 import cl.suray.posbus.ui.settings.SettingsScreen
+import cl.suray.posbus.ui.transfer.TransferScreen
 import cl.suray.posbus.ui.settings.SettingsViewModel
 
 private const val LOGIN = "login"
 private const val HOME = "home"
 private const val CARGO = "cargo"
+private const val BUTTON_COLORS = "button_colors"
 
 @Composable
 fun SurayNavHost(container: AppContainer) {
@@ -36,6 +42,7 @@ fun SurayNavHost(container: AppContainer) {
         composable(LOGIN) {
             LoginScreen(
                 verify = container.passwords::verifyLogin,
+                lockout = container.lockout,
                 onSuccess = { nav.navigate(HOME) { popUpTo(LOGIN) { inclusive = true } } },
             )
         }
@@ -47,6 +54,10 @@ fun SurayNavHost(container: AppContainer) {
                 onCargo = { nav.navigate(CARGO) },
                 onLogout = { nav.navigate(LOGIN) { popUpTo(HOME) { inclusive = true } } },
             )
+        }
+        composable(BUTTON_COLORS) {
+            val vm: ButtonColorsViewModel = viewModel(factory = ButtonColorsViewModel.Factory(container))
+            ButtonColorsScreen(vm = vm, onBack = { nav.popBackStack() })
         }
         composable(CARGO) {
             // Comparte el ViewModel de Home: la venta pasa por la misma canalización (cierre automático, comprobante, caja).
@@ -63,7 +74,14 @@ fun SurayNavHost(container: AppContainer) {
         }
         composable(Destination.Settings.name) {
             val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory(container))
-            SettingsScreen(vm = vm, onBack = { nav.popBackStack() })
+            SettingsScreen(vm = vm, onBack = { nav.popBackStack() }, onButtonColors = { nav.navigate(BUTTON_COLORS) })
+        }
+        composable(Destination.Transfer.name) {
+            TransferScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Destination.Backup.name) {
+            val vm: BackupViewModel = viewModel(factory = BackupViewModel.Factory(container))
+            BackupScreen(vm = vm, onBack = { nav.popBackStack() })
         }
         composable(Destination.Statistics.name) {
             val vm: StatsViewModel = viewModel(factory = StatsViewModel.Factory(container))
@@ -73,7 +91,7 @@ fun SurayNavHost(container: AppContainer) {
             val vm: RecoveryViewModel = viewModel(factory = RecoveryViewModel.Factory(container))
             RecoveryScreen(vm = vm, onBack = { nav.popBackStack() })
         }
-        Destination.entries.filter { it != Destination.Reports && it != Destination.Settings && it != Destination.Recovery && it != Destination.Statistics }.forEach { d ->
+        Destination.entries.filter { it != Destination.Reports && it != Destination.Settings && it != Destination.Recovery && it != Destination.Statistics && it != Destination.Backup && it != Destination.Transfer }.forEach { d ->
             composable(d.name) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("${d.label}: pendiente de portar") }
             }

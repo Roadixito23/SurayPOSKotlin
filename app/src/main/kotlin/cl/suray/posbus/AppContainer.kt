@@ -3,6 +3,8 @@ package cl.suray.posbus
 import android.app.Activity
 import android.content.Context
 import cl.suray.posbus.print.AndroidPrinter
+import cl.suray.posbus.data.backup.BackupService
+import cl.suray.posbus.data.backup.RoomBackupDatabase
 import cl.suray.posbus.data.db.AppDatabase
 import cl.suray.posbus.data.prefs.AppPrefs
 import cl.suray.posbus.domain.CardPayments
@@ -43,6 +45,14 @@ class AppContainer(context: Context) {
 
     val statistics: StatisticsRepository by lazy { StatisticsRepository(db, register) }
 
+    /** La clave de afiliado de SumUp no sale del equipo en las copias de seguridad. */
+    val backup: BackupService by lazy {
+        BackupService(
+            prefs, appContext.filesDir, File(appContext.filesDir, BackupService.DIR_NAME),
+            RoomBackupDatabase(appContext) { db }, clock, excludedKeys = setOf(AppPrefs.KEY_SUMUP_AFFILIATE_KEY),
+        )
+    }
+
     val cardPayments = CardPayments(prefs, clock)
 
     /** La Activity visible; el servicio de impresión de Android la necesita para abrir su diálogo. */
@@ -51,6 +61,7 @@ class AppContainer(context: Context) {
     private val androidPrinter = AndroidPrinter(appContext, { currentActivity }, prefs, clock)
     val pdfPrinter: PdfFilePrinter = androidPrinter
     val pdfDir = File(appContext.filesDir, "pdfs")
+    val appFilesDir: File = appContext.filesDir
     var printer: TicketPrinter = androidPrinter
     var reportPrinter: ReportPrinter = androidPrinter
 

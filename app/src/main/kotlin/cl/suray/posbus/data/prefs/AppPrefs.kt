@@ -2,6 +2,9 @@ package cl.suray.posbus.data.prefs
 
 import android.content.Context
 import android.content.SharedPreferences
+import cl.suray.posbus.data.backup.BackupPrefs
+import cl.suray.posbus.data.backup.PrefEntry
+import cl.suray.posbus.data.backup.PrefType
 import cl.suray.posbus.domain.CardPaymentStore
 import cl.suray.posbus.domain.ComprobanteStore
 import cl.suray.posbus.domain.HolidayStore
@@ -19,7 +22,7 @@ import kotlinx.serialization.json.Json
  * Las claves de seguridad se guardan en texto plano (mismo formato que Flutter); ver `domain/Security.kt`.
  */
 class AppPrefs(private val sp: SharedPreferences) :
-    OpenRegisterStore, LastDateStore, ComprobanteStore, HolidayStore, SecurityStore, CardPaymentStore {
+    OpenRegisterStore, LastDateStore, ComprobanteStore, HolidayStore, SecurityStore, CardPaymentStore, BackupPrefs {
 
     constructor(context: Context) : this(
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE),
@@ -119,6 +122,9 @@ class AppPrefs(private val sp: SharedPreferences) :
 
     fun buttonColorsJson(key: String): String? = sp.getString("button_colors_$key", null)
 
+    /** `json == null` borra la personalización y el botón vuelve a su color de fábrica. */
+    fun setButtonColorsJson(key: String, json: String?) = putOrRemove("button_colors_$key", json)
+
     // --- Apariencia / PDF ---------------------------------------------------------------------
 
     var showIcons: Boolean
@@ -167,6 +173,28 @@ class AppPrefs(private val sp: SharedPreferences) :
     override var lastLockTime: Long
         get() = sp.getLong(KEY_LAST_LOCK_TIME, 0L)
         set(value) = sp.edit().apply { if (value > 0L) putLong(KEY_LAST_LOCK_TIME, value) else remove(KEY_LAST_LOCK_TIME) }.apply()
+
+    // --- Respaldo -----------------------------------------------------------------------------
+
+    override fun snapshot(): Map<String, Any?> = sp.all
+
+    /** Escribe cada valor con el tipo que esta clase lee (`getInt`, `getLong`, `getFloat`…); un tipo equivocado lanzaría al leerlo. */
+    override fun apply(entries: List<PrefEntry>) {
+        val e = sp.edit()
+        for ((key, type, value) in entries) {
+            when (type) {
+                PrefType.String -> e.putString(key, value as String)
+                PrefType.Bool -> e.putBoolean(key, value as Boolean)
+                PrefType.Int -> (value as Long).let { n ->
+                    if (key in LONG_KEYS || n !in Int.MIN_VALUE..Int.MAX_VALUE) e.putLong(key, n) else e.putInt(key, n.toInt())
+                }
+                PrefType.Double -> e.putFloat(key, (value as Double).toFloat())
+                @Suppress("UNCHECKED_CAST")
+                PrefType.StringList -> e.putStringSet(key, (value as List<String>).toSet())
+            }
+        }
+        e.apply()
+    }
 
     // --- Utilidades ---------------------------------------------------------------------------
 
@@ -218,6 +246,9 @@ class AppPrefs(private val sp: SharedPreferences) :
         const val KEY_LAST_LOCK_TIME = "lastLockTime"
 
         const val DEFAULT_PDF_END_MARGIN = 69f
+
+        /** Claves guardadas como `Long` (el resto de enteros son `Int`). */
+        private val LONG_KEYS = setOf(KEY_LAST_LOCK_TIME)
 
         val DEFAULT_ABBREVIATIONS = linkedMapOf(
             "Público General" to "PG",

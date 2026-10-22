@@ -41,16 +41,42 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import cl.suray.posbus.domain.LockoutPolicy
 import cl.suray.posbus.ui.theme.SurayColors
+import cl.suray.posbus.ui.vibrateError
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.delay
 
 /** Equivale a `LoginScreen`: clave de 6 dígitos. El acceso por NFC se agrega con las integraciones. */
 @Composable
-fun LoginScreen(verify: (String) -> Boolean, onSuccess: () -> Unit) {
+fun LoginScreen(verify: (String) -> Boolean, lockout: LockoutPolicy, onSuccess: () -> Unit) {
+    val context = LocalContext.current
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
 
+    // Segundos de bloqueo que quedan; el estado vive en las preferencias, así que sobrevive a reabrir la app.
+    var remaining by remember { mutableStateOf(lockout.remainingSeconds()) }
+    LaunchedEffect(remaining > 0) {
+        while (remaining > 0) {
+            delay(250)
+            remaining = lockout.remainingSeconds()
+        }
+    }
+    val locked = remaining > 0
+
     fun submit() {
-        if (verify(password)) onSuccess() else { error = true; password = "" }
+        if (locked) return
+        if (verify(password)) {
+            lockout.onSuccess()
+            onSuccess()
+        } else {
+            val lockSeconds = lockout.onFailure()
+            context.vibrateError(locked = lockSeconds > 0)
+            remaining = lockout.remainingSeconds()
+            error = true
+            password = ""
+        }
     }
 
     Box(
@@ -76,8 +102,14 @@ fun LoginScreen(verify: (String) -> Boolean, onSuccess: () -> Unit) {
                         value = password,
                         onValueChange = { if (it.length <= 6) { password = it; error = false } },
                         label = { Text("Contraseña (6 dígitos)") },
-                        isError = error,
-                        supportingText = { if (error) Text("Contraseña incorrecta") },
+                        enabled = !locked,
+                        isError = error || locked,
+                        supportingText = {
+                            when {
+                                locked -> Text("Demasiados intentos. Espere $remaining s")
+                                error -> Text("Contraseña incorrecta")
+                            }
+                        },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
@@ -92,6 +124,7 @@ fun LoginScreen(verify: (String) -> Boolean, onSuccess: () -> Unit) {
                     )
                     Button(
                         onClick = ::submit,
+                        enabled = !locked,
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = SurayColors.Amber800),
                         elevation = ButtonDefaults.buttonElevation(5.dp),

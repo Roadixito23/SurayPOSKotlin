@@ -347,7 +347,7 @@ private fun SalesGrid(state: HomeUiState, vm: HomeViewModel, onSell: (Tarifa) ->
     @Composable
     fun fare(i: Int, icon: @Composable () -> Unit, textColor: Color = Color.White, fallback: Tarifa? = null) {
         val t = fares.getOrNull(i) ?: fallback ?: return
-        val c = vm.colors.fare(i, sunday)
+        val c = state.colors.fare(i, sunday)
         SaleButton(t.nombre, icon, c, textColor, enabled, state.display) { onSell(t) }
     }
 
@@ -371,10 +371,10 @@ private fun SalesGrid(state: HomeUiState, vm: HomeViewModel, onSell: (Tarifa) ->
             SectionHeader("OTROS")
             Row(Modifier.height(60.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(Modifier.weight(1f)) {
-                    SaleButton("O F E R T A", { Icon(Icons.Default.Star, null) }, vm.colors.otros(0), Color.Black, enabled, state.display, onOffer)
+                    SaleButton("O F E R T A", { Icon(Icons.Default.Star, null) }, state.colors.otros(0), Color.Black, enabled, state.display, onOffer)
                 }
                 Box(Modifier.weight(1f)) {
-                    SaleButton("C A R G O", { Icon(Icons.Default.ShoppingCart, null) }, vm.colors.otros(1), Color.Black, enabled, state.display, onCargo)
+                    SaleButton("C A R G O", { Icon(Icons.Default.ShoppingCart, null) }, state.colors.otros(1), Color.Black, enabled, state.display, onCargo)
                 }
             }
         }

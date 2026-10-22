@@ -51,6 +51,7 @@ data class HomeUiState(
     val cardAvailable: Boolean = false,
     val lastIsCargo: Boolean = false,
     val display: DisplayPrefs = DisplayPrefs(showIcons = true, textSizeMultiplier = 0.8f),
+    val colors: ButtonPalette = ButtonPalette(emptyMap()),
 ) {
     val hasPending: Boolean get() = pendingDays > 0
 }
@@ -74,7 +75,6 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     /** Días pendientes cuando hay que mostrar el diálogo de cierre obligatorio. */
     val pendingAlert: SharedFlow<Int> = _pendingAlert.asSharedFlow()
 
-    val colors: ButtonPalette = ButtonPalette.load(c.prefs)
 
     private val base = combine(c.register.changes, c.comprobante.numberState, today, pendingDays) { open, number, day, pending ->
         val dia = "%02d".format(day.day)
@@ -110,6 +110,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             lastIsCargo = isCargo,
             cardAvailable = SumUpConfig.isReady(c.prefs.sumUpEnabled, c.prefs.sumUpAffiliateKey),
             display = DisplayPrefs(c.prefs.showIcons, c.prefs.textSizeMultiplier),
+            colors = ButtonPalette.load(c.prefs),
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
 

@@ -58,7 +58,7 @@ private val TABS = listOf("General", "Precios", "Apariencia", "Abreviaturas")
 /** Ajustes protegidos por la clave de Ajustes (`654321` por defecto). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
+fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, onButtonColors: () -> Unit = {}) {
     var unlocked by remember { mutableStateOf(false) }
     if (!unlocked) {
         PasswordDialog(
@@ -97,7 +97,7 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit) {
                 when (tab) {
                     0 -> GeneralTab(state, vm, ::report)
                     1 -> PricesTab(state, vm, ::report)
-                    2 -> AppearanceTab(state, vm, ::report)
+                    2 -> AppearanceTab(state, vm, ::report, onButtonColors)
                     else -> AbbreviationsTab(state, vm)
                 }
             }
@@ -269,7 +269,7 @@ private fun PricesTab(state: SettingsUiState, vm: SettingsViewModel, report: (Re
 }
 
 @Composable
-private fun AppearanceTab(state: SettingsUiState, vm: SettingsViewModel, report: (Rejection, String) -> Unit) {
+private fun AppearanceTab(state: SettingsUiState, vm: SettingsViewModel, report: (Rejection, String) -> Unit, onButtonColors: () -> Unit) {
     var showIcons by remember(state.showIcons) { mutableStateOf(state.showIcons) }
     var opacity by remember(state.buttonOpacity) { mutableStateOf(state.buttonOpacity) }
     var textSize by remember(state.textSize) { mutableStateOf(state.textSize) }
@@ -285,6 +285,11 @@ private fun AppearanceTab(state: SettingsUiState, vm: SettingsViewModel, report:
         Text("Tamaño del texto: ${"%.1f".format(textSize)}×")
         Slider(textSize, { textSize = it }, valueRange = 0.5f..1.5f)
         Button({ vm.saveAppearance(showIcons, opacity, textSize); report(null, "Preferencias guardadas") }) { Text("Guardar") }
+    }
+
+    Section("Colores de los botones") {
+        Text("Fondo, borde y opacidad de cada botón de venta")
+        OutlinedButton(onButtonColors, Modifier.fillMaxWidth()) { Text("Personalizar colores") }
     }
 
     Section("Margen final del PDF") {
