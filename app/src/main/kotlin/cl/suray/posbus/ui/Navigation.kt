@@ -11,10 +11,15 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import cl.suray.posbus.AppContainer
+import cl.suray.posbus.ui.cargo.CargoScreen
 import cl.suray.posbus.ui.home.Destination
 import cl.suray.posbus.ui.home.HomeScreen
 import cl.suray.posbus.ui.home.HomeViewModel
 import cl.suray.posbus.ui.login.LoginScreen
+import cl.suray.posbus.ui.recovery.RecoveryScreen
+import cl.suray.posbus.ui.stats.StatsScreen
+import cl.suray.posbus.ui.stats.StatsViewModel
+import cl.suray.posbus.ui.recovery.RecoveryViewModel
 import cl.suray.posbus.ui.report.ReportScreen
 import cl.suray.posbus.ui.report.ReportViewModel
 import cl.suray.posbus.ui.settings.SettingsScreen
@@ -22,6 +27,7 @@ import cl.suray.posbus.ui.settings.SettingsViewModel
 
 private const val LOGIN = "login"
 private const val HOME = "home"
+private const val CARGO = "cargo"
 
 @Composable
 fun SurayNavHost(container: AppContainer) {
@@ -38,8 +44,14 @@ fun SurayNavHost(container: AppContainer) {
             HomeScreen(
                 vm = vm,
                 onNavigate = { nav.navigate(it.name) },
+                onCargo = { nav.navigate(CARGO) },
                 onLogout = { nav.navigate(LOGIN) { popUpTo(HOME) { inclusive = true } } },
             )
+        }
+        composable(CARGO) {
+            // Comparte el ViewModel de Home: la venta pasa por la misma canalización (cierre automático, comprobante, caja).
+            val homeVm: HomeViewModel = viewModel(nav.getBackStackEntry(HOME), factory = HomeViewModel.Factory(container))
+            CargoScreen(onSubmit = { homeVm.sellCargo(it); nav.popBackStack() }, onBack = { nav.popBackStack() })
         }
         composable(Destination.Reports.name) {
             val vm: ReportViewModel = viewModel(factory = ReportViewModel.Factory(container))
@@ -53,7 +65,15 @@ fun SurayNavHost(container: AppContainer) {
             val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory(container))
             SettingsScreen(vm = vm, onBack = { nav.popBackStack() })
         }
-        Destination.entries.filter { it != Destination.Reports && it != Destination.Settings }.forEach { d ->
+        composable(Destination.Statistics.name) {
+            val vm: StatsViewModel = viewModel(factory = StatsViewModel.Factory(container))
+            StatsScreen(vm = vm, onBack = { nav.popBackStack() })
+        }
+        composable(Destination.Recovery.name) {
+            val vm: RecoveryViewModel = viewModel(factory = RecoveryViewModel.Factory(container))
+            RecoveryScreen(vm = vm, onBack = { nav.popBackStack() })
+        }
+        Destination.entries.filter { it != Destination.Reports && it != Destination.Settings && it != Destination.Recovery && it != Destination.Statistics }.forEach { d ->
             composable(d.name) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("${d.label}: pendiente de portar") }
             }

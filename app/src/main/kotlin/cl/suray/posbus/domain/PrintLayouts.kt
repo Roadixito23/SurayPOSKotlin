@@ -24,7 +24,72 @@ data class TicketLayout(
     val isReprint: Boolean get() = reprintedAt != null
 }
 
+data class OfferTicketLayout(
+    val numberLine: String,
+    val rows: List<Pair<String, String>>,
+    val totalLine: String,
+    val time: String,
+    val date: String,
+    val reprintedAt: String?,
+) {
+    val isReprint: Boolean get() = reprintedAt != null
+}
+
+enum class CargoCopy { Client, Cargo }
+
+/** Una copia de cargo; [boxes] y demás textos se dibujan en `print/`. */
+data class CargoTicketLayout(
+    val numberLine: String,
+    val caption: String,
+    val destino: String,
+    val articulo: String,
+    val precioLine: String,
+    val destinatario: String,
+    val telefono: String?,
+    val fecha: String,
+    val hora: String,
+    val comprobante: String,
+    val copy: CargoCopy,
+)
+
 object TicketLayouts {
+    private fun dateTime(nowMillis: Long): Pair<String, String> {
+        val c = java.util.Calendar.getInstance().apply { timeInMillis = nowMillis }
+        val time = "%02d:%02d:%02d".format(c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND))
+        val date = "%02d/%02d/%04d".format(c.get(java.util.Calendar.DAY_OF_MONTH), c.get(java.util.Calendar.MONTH) + 1, c.get(java.util.Calendar.YEAR))
+        return time to date
+    }
+
+    fun offer(entries: List<cl.suray.posbus.data.prefs.OfferEntry>, comprobante: String, nowMillis: Long, reprint: Boolean): OfferTicketLayout {
+        val (time, date) = dateTime(nowMillis)
+        return OfferTicketLayout(
+            numberLine = "N° $comprobante",
+            rows = entries.map { Offers.quantity(it).toString() to "$${formatClp(Offers.price(it))}" },
+            totalLine = "Total: $${formatClp(Offers.total(entries))}",
+            time = time,
+            date = date,
+            reprintedAt = if (reprint) "$date $time" else null,
+        )
+    }
+
+    fun cargo(data: cl.suray.posbus.data.prefs.CargoData, comprobante: String, copy: CargoCopy, nowMillis: Long, reprint: Boolean): CargoTicketLayout {
+        val (time, date) = dateTime(nowMillis)
+        val who = if (copy == CargoCopy.Client) "COPIA CLIENTE" else "COPIA CARGA"
+        return CargoTicketLayout(
+            numberLine = "N° $comprobante",
+            caption = if (reprint) "$who (REIMPRESIÓN)" else who,
+            destino = data.destino,
+            articulo = data.articulo,
+            precioLine = "$${formatClp(data.precio)}",
+            destinatario = data.destinatario,
+            telefono = data.telefono.ifEmpty { null },
+            fecha = date,
+            hora = time,
+            comprobante = comprobante,
+            copy = copy,
+        )
+    }
+
     fun regular(
         nombre: String,
         valor: Double,

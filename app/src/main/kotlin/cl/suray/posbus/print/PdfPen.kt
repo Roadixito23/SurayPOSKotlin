@@ -146,18 +146,135 @@ class PdfPen(private val canvas: Canvas?, val width: Float = PAPER_WIDTH_PT) {
         y += all.sumOf { rowH(it.second).toDouble() }.toFloat()
     }
 
+    /** Tabla centrada de celdas centradas, con cabecera gris (oferta en ruta). */
+    fun centeredTable(header: List<String>, rows: List<List<String>>, flex: List<Float>, widthFactor: Float) {
+        val tableW = width * widthFactor
+        val left = (width - tableW) / 2
+        val widths = flex.map { it / flex.sum() * tableW }
+        val hp = paint(8f, bold = true)
+        val bp = paint(9f)
+        val all = listOf(header to hp) + rows.map { it to bp }
+        var top = y
+        canvas?.let { c ->
+            all.forEachIndexed { r, (cells, p) ->
+                val h = lineHeight(p) + 6f
+                var x = left
+                cells.forEachIndexed { i, text ->
+                    if (r == 0) c.drawRect(RectF(x, top, x + widths[i], top + h), Paint().apply { color = Color.rgb(245, 245, 245) })
+                    c.drawRect(RectF(x, top, x + widths[i], top + h), stroke(0.5f))
+                    c.drawText(text, x + (widths[i] - p.measureText(text)) / 2, top + 3f - p.fontMetrics.ascent, p)
+                    x += widths[i]
+                }
+                top += h
+            }
+            c.drawRect(RectF(left, y, left + tableW, top), stroke(1f))
+        }
+        y += all.sumOf { (lineHeight(it.second) + 6f).toDouble() }.toFloat()
+    }
+
+    sealed interface BoxItem {
+        data class Gap(val h: Float) : BoxItem
+        data class Line(val text: String, val size: Float, val bold: Boolean = false) : BoxItem
+        /** Etiqueta pequeña seguida del valor en negrita, en la misma línea. */
+        data class Inline(val label: String, val value: String) : BoxItem
+        data class Pair(val left: String, val right: String, val size: Float) : BoxItem
+    }
+
+    private fun wrap(text: String, p: Paint, maxW: Float): List<String> {
+        val out = mutableListOf<String>()
+        var line = ""
+        for (word in text.split(' ')) {
+            var w = word
+            while (p.measureText(w) > maxW && w.length > 1) { // palabra más ancha que la línea: se corta
+                val n = (1..w.length).last { p.measureText(w.substring(0, it)) <= maxW }.coerceAtLeast(1)
+                if (line.isNotEmpty()) { out += line; line = "" }
+                out += w.substring(0, n); w = w.substring(n)
+            }
+            val candidate = if (line.isEmpty()) w else "$line $w"
+            if (p.measureText(candidate) <= maxW) line = candidate else { out += line; line = w }
+        }
+        if (line.isNotEmpty()) out += line
+        return out.ifEmpty { listOf("") }
+    }
+
+    /** Recuadro a todo el ancho con [items] adentro (texto que no cabe pasa a la línea siguiente). */
+    fun box(items: List<BoxItem>, padding: Float = 6f) {
+        val inner = width - 2 * PAD - 2 * padding
+        class Row(val h: Float, val draw: (Canvas, Float, Float) -> Unit)
+        val rows = mutableListOf<Row>()
+        for (item in items) when (item) {
+            is BoxItem.Gap -> rows += Row(item.h) { _, _, _ -> }
+            is BoxItem.Line -> {
+                val p = paint(item.size, item.bold)
+                for (l in wrap(item.text, p, inner)) rows += Row(lineHeight(p)) { c, x, top -> c.drawText(l, x, top - p.fontMetrics.ascent, p) }
+            }
+            is BoxItem.Inline -> {
+                val lp = paint(10f)
+                val vp = fitted(item.value, 12f, true, false, inner - lp.measureText(item.label + " ") - 2f)
+                rows += Row(maxOf(lineHeight(lp), lineHeight(vp))) { c, x, top ->
+                    c.drawText(item.label, x, top - lp.fontMetrics.ascent, lp)
+                    c.drawText(item.value, x + lp.measureText(item.label + " "), top - vp.fontMetrics.ascent, vp)
+                }
+            }
+            is BoxItem.Pair -> {
+                val p = paint(item.size)
+                rows += Row(lineHeight(p)) { c, x, top ->
+                    c.drawText(item.left, x, top - p.fontMetrics.ascent, p)
+                    c.drawText(item.right, x + inner - p.measureText(item.right), top - p.fontMetrics.ascent, p)
+                }
+            }
+        }
+        val h = rows.sumOf { it.h.toDouble() }.toFloat() + 2 * padding
+        canvas?.let { c ->
+            c.drawRect(RectF(PAD, y, width - PAD, y + h), stroke(1f))
+            var top = y + padding
+            rows.forEach { it.draw(c, PAD + padding, top); top += it.h }
+        }
+        y += h
+    }
+
+    fun tapeRectangle(height: Float = 45f) {
+        val p = fitted("COLOCAR CINTA", 16f, true, false, width - 2 * PAD - 12f)
+        canvas?.let { c ->
+            c.drawRect(RectF(PAD + 2f, y + 2f, width - PAD - 2f, y + height - 2f), stroke(4f))
+            c.drawText("COLOCAR CINTA", (width - p.measureText("COLOCAR CINTA")) / 2, y + height / 2 - (p.fontMetrics.ascent + p.fontMetrics.descent) / 2, p)
+        }
+        y += height
+    }
+
+    /** Tijera a la izquierda y línea punteada de corte. */
+    fun cutLine(scissors: Bitmap) {
+        val w = 12f
+        val h = w * scissors.height / scissors.width
+        canvas?.let { c ->
+            c.drawBitmap(scissors, null, RectF(PAD, y, PAD + w, y + h), Paint(Paint.FILTER_BITMAP_FLAG))
+            val dash = Paint().apply {
+                style = Paint.Style.STROKE; strokeWidth = 0.7f; color = Color.BLACK
+                pathEffect = android.graphics.DashPathEffect(floatArrayOf(3f, 3f), 0f)
+            }
+            c.drawLine(PAD + w + 4f, y + h / 2, width - PAD, y + h / 2, dash)
+        }
+        y += h
+    }
+
     private fun stroke(w: Float) = Paint().apply { style = Paint.Style.STROKE; strokeWidth = w; color = Color.BLACK }
 
     private companion object { const val PAD = 3f }
 }
 
+/** PDF terminado con su altura en puntos (el papel continuo se declara con esa altura al imprimir). */
+class RenderedPdf(val bytes: ByteArray, val heightPt: Int)
+
 /** Mide el contenido, crea una página de esa altura y lo dibuja. */
-fun renderPdf(draw: (PdfPen) -> Unit): PdfDocument {
+fun renderPdf(draw: (PdfPen) -> Unit): RenderedPdf {
     val height = Math.ceil(PdfPen(null).also(draw).y.toDouble()).toInt().coerceAtLeast(1) + 8
     val doc = PdfDocument()
     val page = doc.startPage(PdfDocument.PageInfo.Builder(Math.ceil(PAPER_WIDTH_PT.toDouble()).toInt(), height, 1).create())
     page.canvas.translate(0f, 4f)
     draw(PdfPen(page.canvas))
     doc.finishPage(page)
-    return doc
+    val out = java.io.ByteArrayOutputStream()
+    doc.writeTo(out)
+    doc.close()
+    return RenderedPdf(out.toByteArray(), height)
 }

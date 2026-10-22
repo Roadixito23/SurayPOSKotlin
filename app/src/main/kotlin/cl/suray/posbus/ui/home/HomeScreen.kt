@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cl.suray.posbus.R
 import cl.suray.posbus.data.prefs.Tarifa
+import cl.suray.posbus.domain.CargoCopy
 import cl.suray.posbus.ui.theme.Hemiheads
 import cl.suray.posbus.ui.theme.SurayColors
 import java.text.NumberFormat
@@ -95,7 +96,7 @@ private val Clp: NumberFormat = NumberFormat.getIntegerInstance(Locale("es", "CL
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onLogout: () -> Unit) {
+fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onCargo: () -> Unit, onLogout: () -> Unit) {
     val state by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val drawer = rememberDrawerState(DrawerValue.Closed)
@@ -104,6 +105,8 @@ fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onLogout: (
     var payment by remember { mutableStateOf<Tarifa?>(null) }
     var askCancel by remember { mutableStateOf(false) }
     var askReprint by remember { mutableStateOf(false) }
+    var cargoCopies by remember { mutableStateOf(false) }
+    var showOffer by remember { mutableStateOf(false) }
     var pendingAlert by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(Unit) {
@@ -153,7 +156,7 @@ fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onLogout: (
                     )
                     if (state.hasPending) PendingBanner(onClose = { onNavigate(Destination.Reports) })
                     StatusBand(state, onRate = vm::setSundayRate)
-                    SalesGrid(state, vm, onSell = ::requestSale)
+                    SalesGrid(state, vm, onSell = ::requestSale, onOffer = { showOffer = true }, onCargo = onCargo)
                 }
             }
         }
@@ -179,9 +182,27 @@ fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onLogout: (
         PasswordDialog(
             title = "Reimprimir último ticket",
             verify = vm::verifyPassword,
-            onConfirmed = { askReprint = false; vm.reprintLast() },
+            onConfirmed = { askReprint = false; if (state.lastIsCargo) cargoCopies = true else vm.reprintLast() },
             onDismiss = { askReprint = false },
         )
+    }
+    if (cargoCopies) {
+        AlertDialog(
+            onDismissRequest = { cargoCopies = false },
+            title = { Text("Reimprimir cargo", fontWeight = FontWeight.Bold) },
+            text = { Text("¿Qué copia desea reimprimir?") },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton({ cargoCopies = false; vm.reprintLast(listOf(CargoCopy.Client)) }) { Text("Cliente") }
+                    TextButton({ cargoCopies = false; vm.reprintLast(listOf(CargoCopy.Cargo)) }) { Text("Carga") }
+                    TextButton({ cargoCopies = false; vm.reprintLast(listOf(CargoCopy.Client, CargoCopy.Cargo)) }) { Text("Ambas") }
+                }
+            },
+            dismissButton = { TextButton({ cargoCopies = false }) { Text("Cancelar") } },
+        )
+    }
+    if (showOffer) {
+        OfferDialog(onSubmit = vm::sellOffer, onClose = { showOffer = false })
     }
     pendingAlert?.let { days ->
         AlertDialog(
@@ -317,7 +338,7 @@ private fun TransactionCounter(sales: Int, cancellations: Int) {
 }
 
 @Composable
-private fun SalesGrid(state: HomeUiState, vm: HomeViewModel, onSell: (Tarifa) -> Unit) {
+private fun SalesGrid(state: HomeUiState, vm: HomeViewModel, onSell: (Tarifa) -> Unit, onOffer: () -> Unit, onCargo: () -> Unit) {
     val fares = state.fares
     val enabled = !state.busy && !state.hasPending
     val sunday = state.sundayRate
@@ -350,10 +371,10 @@ private fun SalesGrid(state: HomeUiState, vm: HomeViewModel, onSell: (Tarifa) ->
             SectionHeader("OTROS")
             Row(Modifier.height(60.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(Modifier.weight(1f)) {
-                    SaleButton("O F E R T A", { Icon(Icons.Default.Star, null) }, vm.colors.otros(0), Color.Black, enabled, state.display) { vm.notifyPending("Oferta") }
+                    SaleButton("O F E R T A", { Icon(Icons.Default.Star, null) }, vm.colors.otros(0), Color.Black, enabled, state.display, onOffer)
                 }
                 Box(Modifier.weight(1f)) {
-                    SaleButton("C A R G O", { Icon(Icons.Default.ShoppingCart, null) }, vm.colors.otros(1), Color.Black, enabled, state.display) { vm.notifyPending("Cargo") }
+                    SaleButton("C A R G O", { Icon(Icons.Default.ShoppingCart, null) }, vm.colors.otros(1), Color.Black, enabled, state.display, onCargo)
                 }
             }
         }

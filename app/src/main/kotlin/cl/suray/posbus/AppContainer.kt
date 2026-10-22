@@ -15,8 +15,11 @@ import cl.suray.posbus.domain.HolidayService
 import cl.suray.posbus.domain.LockoutPolicy
 import cl.suray.posbus.domain.PasswordManager
 import cl.suray.posbus.domain.PendingTransactionService
+import cl.suray.posbus.domain.StatisticsRepository
 import cl.suray.posbus.domain.SystemClock
+import cl.suray.posbus.domain.PdfFilePrinter
 import cl.suray.posbus.domain.TicketPrinter
+import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /** Inyección de dependencias manual (sin Hilt, para mantener ligero el build y el arranque en el V1s). */
@@ -38,12 +41,16 @@ class AppContainer(context: Context) {
     /** Se incrementa al guardar Ajustes; Home lo observa para releer tarifas y preferencias de pantalla. */
     val settingsRevision = MutableStateFlow(0)
 
+    val statistics: StatisticsRepository by lazy { StatisticsRepository(db, register) }
+
     val cardPayments = CardPayments(prefs, clock)
 
     /** La Activity visible; el servicio de impresión de Android la necesita para abrir su diálogo. */
     @Volatile var currentActivity: Activity? = null
 
     private val androidPrinter = AndroidPrinter(appContext, { currentActivity }, prefs, clock)
+    val pdfPrinter: PdfFilePrinter = androidPrinter
+    val pdfDir = File(appContext.filesDir, "pdfs")
     var printer: TicketPrinter = androidPrinter
     var reportPrinter: ReportPrinter = androidPrinter
 

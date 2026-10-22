@@ -135,3 +135,17 @@ class StatisticsRepository(private val db: AppDatabase, private val register: Ca
         return closed + register.all
     }
 }
+
+/** Formatos de cifras de la pantalla de estadísticas. */
+object StatsFormat {
+    /** `1.234`; desde un millón, `2M` (redondeado, como Flutter). */
+    fun number(value: Double): String =
+        if (value >= 1_000_000) formatClp(value / 1_000_000) + "M" else formatClp(value)
+
+    /** Etiqueta corta para barras: `1.5M`, `12K`, `850`. */
+    fun short(value: Double): String = when {
+        value >= 1_000_000 -> String.format(java.util.Locale.US, "%.1fM", value / 1_000_000)
+        value >= 1_000 -> String.format(java.util.Locale.US, "%.0fK", value / 1_000)
+        else -> String.format(java.util.Locale.US, "%.0f", value)
+    }
+}

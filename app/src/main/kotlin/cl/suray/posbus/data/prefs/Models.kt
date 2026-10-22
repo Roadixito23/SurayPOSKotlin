@@ -31,4 +31,28 @@ data class LastTransaction(
     val valor: Double,
     val comprobante: String,
     val switchValue: Boolean = false,
-)
+    /** `ofertaMultiple` en ofertas (mismo valor que Flutter). */
+    val tipo: String? = null,
+    val offerEntries: List<OfferEntry>? = null,
+    val destinatario: String? = null,
+    val articulo: String? = null,
+    val destino: String? = null,
+    val telefono: String? = null,
+) {
+    val isCargo: Boolean get() = nombre.lowercase().contains("cargo")
+    val isOffer: Boolean get() = nombre == "Oferta Ruta" || tipo == "ofertaMultiple"
+
+    fun cargoData(): CargoData? =
+        if (isCargo && destinatario != null && articulo != null) {
+            CargoData(destino ?: "", articulo, valor, destinatario, telefono ?: "")
+        } else {
+            null
+        }
+}
+
+/** Línea de una oferta: cantidad y valor tal como se escribieron. */
+@Serializable
+data class OfferEntry(val number: String, val value: String)
+
+/** Datos de un cargo (encomienda). */
+data class CargoData(val destino: String, val articulo: String, val precio: Double, val destinatario: String, val telefono: String)
