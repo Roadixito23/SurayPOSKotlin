@@ -10,6 +10,7 @@ cd ~/projects/Suray/SurayPOSKotlin
 ./gradlew testDebugUnitTest                  # tests JVM (~62), corren en el PC
 ./gradlew connectedDebugAndroidTest          # tests en el Sunmi (necesita el equipo despierto)
 ~/Android/Sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleRelease                    # APK firmado y reducido (ver «Migración y release»)
 ~/Android/Sdk/platform-tools/adb shell am start -n cl.suray.posbus/.MainActivity
 ```
 - Equipo: Sunmi V1s-G, Android 6.0 (API 23), serie `VS08197Q61659`. **La pantalla se apaga sola**: antes de cada captura o test, `adb shell input keyevent KEYCODE_WAKEUP`. Si sale negro, es eso.
@@ -51,7 +52,7 @@ Aviso: la clave de afiliado sigue escrita en el código de **Flutter** (`sumup_s
 - **Reporte de caja** (`ui/report`): resumen, lista con colores por tipo, orden nuevo/antiguo, efectivo vs tarjeta, botón "Cerrar Caja e Imprimir". Verificado en el equipo: con 3 ventas ($7.900) el cierre falla por no haber impresora y la caja se conserva.
 
 ### Tests
-- JVM: 94, todos pasan (`SettingsInputTest`, `PrintLayoutsTest`).
+- JVM: 98; en el equipo: +1 (`FlutterMigrationTest`), todos pasan (`SettingsInputTest`, `PrintLayoutsTest`).
 - En el equipo (Sunmi, Android 6.0): **18 pasaron**, ninguno falla. Incluyen datos, cierre automático y fusión, seguridad y el cierre manual contra Room real (guarda y vacía; el segundo cierre del día fusiona; impresión fallida no toca nada).
 
 ## Lo que falta
@@ -61,8 +62,10 @@ Aviso: la clave de afiliado sigue escrita en el código de **Flutter** (`sumup_s
 3. ~~**Recuperación de reportes**~~ **Hecho (2026-10-22)**, `ui/recovery` + `domain/ReportFiles.kt`: lista los PDF de `files/pdfs/` (más reciente primero), búsqueda por nombre, estadísticas (total, últimos 7 días, espacio) y reimpresión con `PdfFilePrinter` (el alto de página se lee con `PdfRenderer`). Verificado en el equipo con un cierre real. Alcance = el de Flutter (listar/buscar/reimprimir); no hay borrado. El menú y el botón «Anteriores» del reporte llevan aquí.
 4. ~~**Estadísticas**~~ **Hecho (2026-10-22)**, `ui/stats`: resumen de 30 días (total, transacciones, promedio diario, días activos), gráfico de barras de la semana (hecho con Compose, sin librería), ranking de los 6 pasajes más vendidos y datos destacados (mejor día, más vendido, promedios semanal/Lun–Sáb/domingos); botón actualizar. Lee las ventas cerradas (Room) + la caja abierta. Verificado en el equipo con 5 ventas; las cifras cuadran.
 5. ~~**Backup**~~ **Hecho (2026-10-22)**, `data/backup` + `ui/backup`: `.suray` = ZIP con `preferences.json` (mapa plano con marcadores `clave_type`, igual que Flutter), `cargo_receipts/`, `pdfs/` y, como extra, `database/suraypos.db` (el backup de Flutter **no incluye SQLite**: los cierres históricos de Flutter no viajan en sus copias). Crear, listar, compartir (FileProvider), exportar a archivo (selector del sistema, sin permisos de almacenamiento), **importar** un `.suray` externo (sirve para traer copias de Flutter) y restaurar. Restaurar acepta ambas variantes, valida todo antes de tocar nada (ZIP, JSON, cabecera SQLite), ignora rutas con `..`/absolutas/subcarpetas y escribe cada tipo con el que lee `AppPrefs` (Int/Long/Float). Tras restaurar hay que reiniciar la app (botón «Cerrar la aplicación»). **La clave de afiliado de SumUp no se incluye en las copias** (las claves de la app sí van en texto plano, como en Flutter). Verificado en el equipo: crear → venta → restaurar vuelve al estado de la copia y la base restaurada abre. **No probado:** compartir y exportar a archivo (diálogos del sistema), importar desde el selector.
-6. **Transferencia** (QR de WhatsApp y banco; assets `qr_codes/`).
-7. **Seguridad** (pantalla de bloqueo con vibración) y **Colores de botones**.
+6. ~~**Transferencia**~~ **Hecho (2026-10-22)**, `ui/transfer`: datos bancarios y los dos QR (assets `qr_suray`, `wspqr`). Estático, igual que Flutter. Verificado en el equipo.
+7. ~~**Seguridad** y **Colores de botones**~~ **Hechos (2026-10-22)**:
+   - **Seguridad:** el bloqueo progresivo (3 intentos libres, luego 5/15/30/60/150 s) ahora se aplica al **login real**, con cuenta atrás, campo y botón deshabilitados, vibración (corta en fallo, triple al bloquear; permiso `VIBRATE`) y estado que sobrevive al reinicio. Verificado en el equipo. Ojo: en Flutter la `SecurityScreen` era **código muerto** (nunca se usaba) y el login real no tenía bloqueo; además esa pantalla traía un truco que **revela la contraseña** al mantener pulsado el ícono 15 s — **no se portó** (puerta trasera). Los diálogos de clave de Home (anular, reimprimir) y Ajustes **no** tienen bloqueo por intentos.
+   - **Colores de botones:** `ui/settings/ButtonColorsScreen.kt` (Ajustes → Apariencia → Personalizar colores): 14 botones, editor RGB de fondo y borde + opacidad con vista previa, guardar y restablecer; mismo formato `button_colors_*` que Flutter; Home se actualiza al volver. Los colores de fábrica viven ahora en un solo lugar (`domain/ButtonColorSpec.kt`).
 8. Pequeños pendientes de Login/Home: acceso por NFC, barra de título "Inicio de Sesión", verificar el diálogo de anular con el teclado abierto, ancho del menú lateral (ya acotado a 300 dp, sin ver en pantalla), íconos personalizables de botones.
 
 ### Integraciones (fase 5)
@@ -73,13 +76,17 @@ Aviso: la clave de afiliado sigue escrita en el código de **Flutter** (`sumup_s
 - **SumUp**: intent `sumupmerchant://pay/1.0` (`affiliate-key`, `app-id=posbus`, `amount`, `currency=CLP`, `title`, `callback=posbus://sumup-result`), recibir el resultado en `onNewIntent`/`onCreate` con intent-filter. No usar `<queries>` (rompe el parseo en Sunmi) ni `canLaunchUrl`: lanzar y capturar `ActivityNotFoundException`. Guardar pago con `CardPayments` (ya implementado).
 - **Backup**: permisos de almacenamiento en tiempo de ejecución en API 23 y `FileProvider` para compartir.
 
-### Migración y release (fase 6)
-- Importar preferencias/DB/`.suray` de la app Flutter (misma clave SumUp incluida).
-- Release: R8, `abiFilters armeabi-v7a`, keystore propio (Flutter firma con la clave debug), `versionName` con formato de fecha como hoy.
-- Medir rendimiento y RAM en el V1s con Compose.
+### Migración y release (fase 6) — hecho (2026-10-22)
+- **Migración desde Flutter:** la app Flutter es `com.example.untitled3` y la nueva `cl.suray.posbus`; Android no permite leer datos de otra app, así que el camino es el **`.suray` de Flutter** (Flutter → Respaldo y Recuperación → Exportar/Compartir; nueva app → Respaldo → *Importar archivo* → seleccionarlo → *Restaurar*). Trae: preferencias (tarifas, claves, contadores, caja abierta, última venta, colores, abreviaturas, clave de SumUp si estaba), PDFs de reportes y recibos de cargo. **No trae el historial de cierres (SQLite): el backup de Flutter nunca lo incluyó.** Verificado con `FlutterMigrationTest` (androidTest, en el Sunmi): un `.suray` con los tipos de Flutter (enteros, dobles, JSON en strings) se importa y **todos** los getters de `AppPrefs` leen bien; las claves importadas validan en `PasswordManager`.
+  - Pasos sugeridos para el cambio: (1) en Flutter, cerrar la caja y crear la copia; (2) llevar el `.suray` al equipo (Descargas/compartir); (3) instalar la app nueva, importar y restaurar; (4) comprobar tarifas, claves y el N° de comprobante antes de vender; (5) mantener Flutter instalado unos días como respaldo (conviven: distinto applicationId).
+- **Release:** `./gradlew assembleRelease` → `app/build/outputs/apk/release/app-release.apk` (3,5 MB; el debug pesa 12,9 MB). R8 + reducción de recursos activos, solo `armeabi-v7a` (el V1s es de 32 bits), `versionName` = `yy.MM.dd` y `versionCode` = `yyMMdd` calculados con la fecha de la compilación (como Flutter, `25.05.26`).
+- **Firma propia:** almacén en `~/.config/suray-signing/suray-release.jks` + `keystore.properties` (permisos 600, **fuera del repo**; alias `suray`, RSA 2048, validez 10 000 días; contraseñas aleatorias solo en ese archivo). **Hacer copia de seguridad de esa carpeta: sin ese almacén no se puede actualizar la app instalada** (habría que desinstalar y perder los datos). Otra ruta: variable `SURAY_KEYSTORE_PROPERTIES`. Sin el archivo, el release sale sin firmar. Para instalar el release sobre un debug hay que desinstalar primero (firmas distintas). Huella SHA-256 del certificado: `1635a9a624b0e7a7384edf21add44367076e1a2f817e5b851f3b2bbfcb5d0bba` (se comprueba con `apksigner verify --print-certs`).
+- **Prueba de humo del release (Sunmi, Android 6):** venta, impresión, cierre de caja (Room), estadísticas y copia de seguridad funcionan bajo R8, sin cierres inesperados (no hizo falta ninguna regla en `proguard-rules.pro`).
+- **Rendimiento en el V1s (release):** arranque en frío 1,1–1,5 s (`am start -W`); RSS ≈ 71 MB con Home abierto; heap Java ≈ 17 MB y nativo ≈ 22 MB; equipo con ~960 MB de RAM totales y ~220 MB disponibles. Sin medir todavía: uso de batería ni sesiones largas.
+- **Pendiente de este bloque:** ninguno bloqueante. Opcional: reglas explícitas de R8 si se agregan librerías con reflexión; subir el `targetSdk`.
 
 ## Riesgos y cosas a recordar
 - La impresión normal y el cierre ya funcionan; los tickets de oferta y cargo también.
 - Ventas de días mezclados en un cierre manual se guardan bajo la fecha del reporte (la de la primera venta si todas son del mismo día, si no la fecha actual); no se ha comparado con Flutter.
 - Cuando el equipo se conecte de nuevo: comprobar que la app Flutter y la nueva conviven (distinto applicationId).
-- Orden sugerido para continuar: ~~Ajustes~~ → ~~impresión (ticket + reporte)~~ → ~~Oferta/Cargo~~ → SumUp (omitido por ahora: falta la clave de afiliado) → NFC → ~~Recuperación~~/~~Estadísticas~~ → ~~Backup~~ → Transferencia/Seguridad/Colores → migración de datos.
+- Orden sugerido para continuar: ~~Ajustes~~ → ~~impresión (ticket + reporte)~~ → ~~Oferta/Cargo~~ → SumUp (omitido por ahora: falta la clave de afiliado) → NFC → ~~Recuperación~~/~~Estadísticas~~ → ~~Backup~~ → ~~Transferencia/Seguridad/Colores~~ → ~~migración de datos y release~~. **Quedan solo SumUp y NFC (sin elementos para probarlos) y los pendientes menores de Login/Home (acceso por NFC, íconos personalizables de botones, opacidad de botones).**
