@@ -167,7 +167,7 @@ private fun TypeRanking(s: SalesStats) {
                 }
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text(tipo, fontWeight = FontWeight.Medium)
-                    Text("$n ventas", fontSize = 12.sp, color = Grey600)
+                    Text(if (n == 1) "1 venta" else "$n ventas", fontSize = 12.sp, color = Grey600)
                 }
                 Text("$${StatsFormat.number(s.ingresosPorTipo[tipo] ?: 0.0)}", fontWeight = FontWeight.Bold, color = Color(0xFF388E3C))
             }
