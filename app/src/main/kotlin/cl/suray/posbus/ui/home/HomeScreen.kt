@@ -121,19 +121,10 @@ fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onCargo: ()
     ModalNavigationDrawer(
         drawerState = drawer,
         drawerContent = {
-            ModalDrawerSheet(Modifier.width(300.dp)) {
-                Text("Menú", Modifier.padding(20.dp), fontFamily = Hemiheads, fontSize = 22.sp, color = SurayColors.PrimaryDark)
-                Destination.entries.forEach { d ->
-                    NavigationDrawerItem(label = { Text(d.label) }, selected = false, onClick = {
-                        scope.launch { drawer.close() }
-                        onNavigate(d)
-                    })
-                }
-                NavigationDrawerItem(label = { Text("Cerrar Sesión") }, selected = false, onClick = {
-                    scope.launch { drawer.close() }
-                    onLogout()
-                })
-            }
+            MenuDrawer(
+                onNavigate = { d -> scope.launch { drawer.close() }; onNavigate(d) },
+                onLogout = { scope.launch { drawer.close() }; onLogout() },
+            )
         },
     ) {
         Scaffold(

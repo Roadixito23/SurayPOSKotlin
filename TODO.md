@@ -85,6 +85,15 @@ Aviso: la clave de afiliado sigue escrita en el código de **Flutter** (`sumup_s
 - **Rendimiento en el V1s (release):** arranque en frío 1,1–1,5 s (`am start -W`); RSS ≈ 71 MB con Home abierto; heap Java ≈ 17 MB y nativo ≈ 22 MB; equipo con ~960 MB de RAM totales y ~220 MB disponibles. Sin medir todavía: uso de batería ni sesiones largas.
 - **Pendiente de este bloque:** ninguno bloqueante. Opcional: reglas explícitas de R8 si se agregan librerías con reflexión; subir el `targetSdk`.
 
+### Diseño del menú y de Ajustes (2026-10-22)
+- **Menú lateral** (`ui/home/MenuDrawer.kt`): cabecera con degradado azul de la paleta, logo y versión; entradas agrupadas por categoría (`MenuSection`): **Caja** (Cierres de Caja, Recuperación de Reportes), **Análisis** (Estadísticas), **Cobros** (Transferencia), **Sistema** (Copias de Seguridad, Configuración); «Cerrar Sesión» aparte en rojo. Cada entrada lleva un ícono en cuadrado redondeado (nuevos vectores `ic_chart`, `ic_swap`, `ic_save`, `ic_history`, `ic_logout`, `ic_card`, `ic_money`). Para agregar una opción: añadirla a `Destination` y a una `MenuSection`.
+- **Ajustes** (`ui/settings/SettingsScreen.kt`): barra con degradado, pestañas con ícono por categoría — **Terminal** (ID, comprobante), **Seguridad** (claves, NFC), **Pagos** (SumUp), **Precios**, **Apariencia**, **Abreviaturas** — y tarjetas blancas con cabecera (`ui/components/Design.kt`: `SectionCard`, `IconBadge`, `HeaderBrush`).
+- **Tema:** diálogos, hojas y controles usan tonos de la paleta (`PrimaryLight`, blanco) en vez del lila por defecto de Material 3.
+- Las demás pantallas (Reportes, Estadísticas, Recuperación, Backup…) conservan su diseño; se pueden pasar a `SectionCard`/`HeaderBrush` si se quiere uniformidad total.
+
+### Impresión directa Sunmi (en curso)
+Plan y decisiones en `docs/plan-impresion-directa-sunmi.md`; interfaz del servicio en `docs/sunmi-aidl-4.15.2.md`. **Fases 0 y 1 hechas; Fase 2 con código y tests, pendiente de validar el papel** (Ajustes → Impresión → «Reporte de ejemplo»). Decisiones: texto/columnas nativas, alertbox de confirmación antes de vaciar la caja, error + reintento (sin volver solo al PDF), se sigue guardando el PDF para Recuperación.
+
 ## Riesgos y cosas a recordar
 - La impresión normal y el cierre ya funcionan; los tickets de oferta y cargo también.
 - Ventas de días mezclados en un cierre manual se guardan bajo la fecha del reporte (la de la primera venta si todas son del mismo día, si no la fecha actual); no se ha comparado con Flutter.

@@ -14,7 +14,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -28,6 +33,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
@@ -49,16 +57,46 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import cl.suray.posbus.data.prefs.Tarifa
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.res.painterResource
+import cl.suray.posbus.R
+import cl.suray.posbus.ui.components.HeaderBrush
+import cl.suray.posbus.ui.components.SectionCard
+import cl.suray.posbus.ui.theme.Hemiheads
+import cl.suray.posbus.ui.theme.SurayColors
+import androidx.compose.ui.unit.sp
 import java.text.NumberFormat
 import java.util.Locale
 
 private val Clp: NumberFormat = NumberFormat.getIntegerInstance(Locale("es", "CL"))
-private val TABS = listOf("General", "Precios", "Apariencia", "Abreviaturas")
+private enum class SettingsTab(val title: String, val icon: Int?) {
+    Terminal("Terminal", R.drawable.ic_receipt),
+    Security("Seguridad", null),
+    Payments("Pagos", R.drawable.ic_card),
+    Printing("Impresión", R.drawable.ic_print),
+    Prices("Precios", R.drawable.ic_money),
+    Appearance("Apariencia", null),
+    Abbreviations("Abreviaturas", null),
+}
+
+@Composable
+private fun SettingsTab.painter() = when (this) {
+    SettingsTab.Security -> rememberVectorPainter(Icons.Default.Lock)
+    SettingsTab.Appearance -> rememberVectorPainter(Icons.Default.Create)
+    SettingsTab.Abbreviations -> rememberVectorPainter(Icons.Default.List)
+    else -> painterResource(icon!!)
+}
 
 /** Ajustes protegidos por la clave de Ajustes (`654321` por defecto). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, onButtonColors: () -> Unit = {}) {
+fun SettingsScreen(vm: SettingsViewModel, printerVm: PrinterDiagViewModel, onBack: () -> Unit, onButtonColors: () -> Unit = {}) {
     var unlocked by remember { mutableStateOf(false) }
     if (!unlocked) {
         PasswordDialog(
@@ -73,7 +111,7 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, onButtonColors: ()
     val state by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var message by remember { mutableStateOf<String?>(null) }
-    var tab by remember { mutableStateOf(0) }
+    var tab by remember { mutableStateOf(SettingsTab.Terminal) }
 
     LaunchedEffect(message) {
         message?.let { snackbar.showSnackbar(it); message = null }
@@ -81,54 +119,70 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, onButtonColors: ()
     fun report(r: Rejection, ok: String) { message = r ?: ok }
 
     Scaffold(
+        containerColor = SurayColors.Background,
         topBar = {
-            TopAppBar(
-                title = { Text("Configuración") },
-                navigationIcon = { IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") } },
-            )
+            Column(Modifier.shadow(4.dp)) {
+                TopAppBar(
+                    title = { Text("Configuración", fontFamily = Hemiheads, letterSpacing = 0.5.sp) },
+                    navigationIcon = { IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") } },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent, titleContentColor = Color.White, navigationIconContentColor = Color.White,
+                    ),
+                    modifier = Modifier.background(HeaderBrush),
+                )
+                ScrollableTabRow(
+                    selectedTabIndex = tab.ordinal, edgePadding = 8.dp,
+                    containerColor = Color.White, contentColor = SurayColors.PrimaryDark,
+                    indicator = { positions ->
+                        TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(positions[tab.ordinal]), height = 3.dp, color = SurayColors.Primary)
+                    },
+                    divider = {},
+                ) {
+                    SettingsTab.entries.forEach { t ->
+                        Tab(
+                            tab == t, { tab = t },
+                            selectedContentColor = SurayColors.PrimaryDark, unselectedContentColor = Color(0xFF8A9BAB),
+                            icon = { Icon(t.painter(), null, Modifier.size(22.dp)) },
+                            text = { Text(t.title, fontSize = 12.sp, fontWeight = if (tab == t) FontWeight.Bold else FontWeight.Medium) },
+                        )
+                    }
+                }
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
-            ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
-                TABS.forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t) }) }
-            }
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                when (tab) {
-                    0 -> GeneralTab(state, vm, ::report)
-                    1 -> PricesTab(state, vm, ::report)
-                    2 -> AppearanceTab(state, vm, ::report, onButtonColors)
-                    else -> AbbreviationsTab(state, vm)
-                }
+        Column(
+            Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            when (tab) {
+                SettingsTab.Terminal -> TerminalTab(state, vm, ::report)
+                SettingsTab.Security -> SecurityTab(state, vm, ::report)
+                SettingsTab.Payments -> PaymentsTab(state, vm, ::report)
+                SettingsTab.Printing -> PrinterDiagTab(printerVm)
+                SettingsTab.Prices -> PricesTab(state, vm, ::report)
+                SettingsTab.Appearance -> AppearanceTab(state, vm, ::report, onButtonColors)
+                SettingsTab.Abbreviations -> AbbreviationsTab(state, vm)
             }
         }
     }
 }
 
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, fontWeight = FontWeight.Bold)
-            content()
-        }
-    }
-}
+private fun Section(title: String, icon: Painter, subtitle: String? = null, content: @Composable () -> Unit) =
+    SectionCard(title, icon, subtitle = subtitle, content = content)
 
 @Composable
-private fun GeneralTab(state: SettingsUiState, vm: SettingsViewModel, report: (Rejection, String) -> Unit) {
+private fun TerminalTab(state: SettingsUiState, vm: SettingsViewModel, report: (Rejection, String) -> Unit) {
     var terminal by remember(state.terminalId) { mutableStateOf(state.terminalId.toString()) }
-    var affiliate by remember { mutableStateOf("") }
     var confirmReset by remember { mutableStateOf(false) }
     var askReset by remember { mutableStateOf(false) }
-    var passwordDialog by remember { mutableStateOf<PasswordKind?>(null) }
 
-    Section("ID de terminal") {
-        Text("Identificador de este dispositivo (1-99)")
+    Section("ID de terminal", painterResource(R.drawable.ic_bus), "Identificador de este dispositivo (1-99)") {
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 terminal, { terminal = it.filter(Char::isDigit).take(2) },
-                Modifier.width(120.dp), singleLine = true,
+                Modifier.width(120.dp), singleLine = true, shape = RoundedCornerShape(12.dp),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             )
             Spacer(Modifier.width(12.dp))
@@ -136,44 +190,9 @@ private fun GeneralTab(state: SettingsUiState, vm: SettingsViewModel, report: (R
         }
     }
 
-    Section("N° Comprobante") {
-        Text("Último usado: ${state.comprobanteNumber}. Reinicia el contador (requiere la clave del comprobante).")
+    Section("N° Comprobante", painterResource(R.drawable.ic_receipt), "Último usado: ${state.comprobanteNumber}") {
+        Text("Reinicia el contador de comprobantes. Requiere la clave del comprobante.", fontSize = 14.sp)
         Button({ askReset = true }) { Text("Reiniciar contador") }
-    }
-
-    Section("Claves") {
-        OutlinedButton({ passwordDialog = PasswordKind.App }, Modifier.fillMaxWidth()) { Text("Cambiar clave de la app") }
-        OutlinedButton({ passwordDialog = PasswordKind.Settings }, Modifier.fillMaxWidth()) { Text("Cambiar clave de Ajustes") }
-        OutlinedButton({ passwordDialog = PasswordKind.Comprobante }, Modifier.fillMaxWidth()) { Text("Cambiar clave del comprobante") }
-    }
-
-    Section("Pago con tarjeta (SumUp)") {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Habilitar pago con tarjeta", Modifier.weight(1f))
-            Switch(state.sumUpEnabled, vm::setSumUpEnabled)
-        }
-        Text(if (state.hasAffiliateKey) "Clave de afiliado configurada" else "Sin clave de afiliado: el botón Tarjeta no se mostrará")
-        OutlinedTextField(
-            affiliate, { affiliate = it }, Modifier.fillMaxWidth(), singleLine = true,
-            label = { Text(if (state.hasAffiliateKey) "Nueva clave de afiliado" else "Clave de afiliado") },
-            visualTransformation = PasswordVisualTransformation(),
-        )
-        Button({
-            val r = vm.saveAffiliateKey(affiliate)
-            if (r == null) affiliate = ""
-            report(r, "Clave de afiliado guardada")
-        }) { Text("Guardar clave") }
-    }
-
-    Section("Tarjetas NFC vinculadas") {
-        if (state.linkedCards.isEmpty()) Text("No hay tarjetas vinculadas")
-        state.linkedCards.forEach { id ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(id, Modifier.weight(1f))
-                IconButton({ vm.removeNfcCard(id) }) { Icon(Icons.Default.Delete, "Quitar") }
-            }
-        }
-        Text("Vincular tarjetas nuevas estará disponible con la integración NFC.")
     }
 
     if (askReset) PasswordDialog(
@@ -191,6 +210,29 @@ private fun GeneralTab(state: SettingsUiState, vm: SettingsViewModel, report: (R
         },
         dismissButton = { TextButton({ confirmReset = false }) { Text("Cancelar") } },
     )
+}
+
+@Composable
+private fun SecurityTab(state: SettingsUiState, vm: SettingsViewModel, report: (Rejection, String) -> Unit) {
+    var passwordDialog by remember { mutableStateOf<PasswordKind?>(null) }
+
+    Section("Claves de acceso", rememberVectorPainter(Icons.Default.Lock), "Se guardan en el equipo") {
+        OutlinedButton({ passwordDialog = PasswordKind.App }, Modifier.fillMaxWidth()) { Text("Cambiar clave de la app") }
+        OutlinedButton({ passwordDialog = PasswordKind.Settings }, Modifier.fillMaxWidth()) { Text("Cambiar clave de Ajustes") }
+        OutlinedButton({ passwordDialog = PasswordKind.Comprobante }, Modifier.fillMaxWidth()) { Text("Cambiar clave del comprobante") }
+    }
+
+    Section("Tarjetas NFC vinculadas", rememberVectorPainter(Icons.Default.Person), "Acceso rápido con tarjeta") {
+        if (state.linkedCards.isEmpty()) Text("No hay tarjetas vinculadas", fontSize = 14.sp)
+        state.linkedCards.forEach { id ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(id, Modifier.weight(1f))
+                IconButton({ vm.removeNfcCard(id) }) { Icon(Icons.Default.Delete, "Quitar", tint = SurayColors.Red700) }
+            }
+        }
+        Text("Vincular tarjetas nuevas estará disponible con la integración NFC.", fontSize = 12.sp, color = Color(0xFF6B7C8C))
+    }
+
     passwordDialog?.let { kind ->
         ChangePasswordDialog(
             kind,
@@ -208,6 +250,29 @@ private fun GeneralTab(state: SettingsUiState, vm: SettingsViewModel, report: (R
     }
 }
 
+@Composable
+private fun PaymentsTab(state: SettingsUiState, vm: SettingsViewModel, report: (Rejection, String) -> Unit) {
+    var affiliate by remember { mutableStateOf("") }
+
+    Section("Pago con tarjeta (SumUp)", painterResource(R.drawable.ic_card), if (state.hasAffiliateKey) "Clave de afiliado configurada" else "Sin clave de afiliado") {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Habilitar pago con tarjeta", Modifier.weight(1f))
+            Switch(state.sumUpEnabled, vm::setSumUpEnabled)
+        }
+        if (!state.hasAffiliateKey) Text("Sin clave, el botón Tarjeta no se mostrará.", fontSize = 12.sp, color = Color(0xFF6B7C8C))
+        OutlinedTextField(
+            affiliate, { affiliate = it }, Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp),
+            label = { Text(if (state.hasAffiliateKey) "Nueva clave de afiliado" else "Clave de afiliado") },
+            visualTransformation = PasswordVisualTransformation(),
+        )
+        Button({
+            val r = vm.saveAffiliateKey(affiliate)
+            if (r == null) affiliate = ""
+            report(r, "Clave de afiliado guardada")
+        }) { Text("Guardar clave") }
+    }
+}
+
 private enum class PasswordKind(val label: String) {
     App("clave de la app"), Settings("clave de Ajustes"), Comprobante("clave del comprobante")
 }
@@ -218,7 +283,7 @@ private fun PricesTab(state: SettingsUiState, vm: SettingsViewModel, report: (Re
     var restore by remember { mutableStateOf<Boolean?>(null) }
 
     @Composable
-    fun fares(title: String, sunday: Boolean, list: List<Tarifa>) = Section(title) {
+    fun fares(title: String, sunday: Boolean, list: List<Tarifa>) = Section(title, painterResource(R.drawable.ic_money)) {
         list.forEachIndexed { i, t ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(t.nombre, Modifier.weight(1f))
@@ -275,7 +340,7 @@ private fun AppearanceTab(state: SettingsUiState, vm: SettingsViewModel, report:
     var textSize by remember(state.textSize) { mutableStateOf(state.textSize) }
     var margin by remember(state.pdfMargin) { mutableStateOf(state.pdfMargin.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }) }
 
-    Section("Botones") {
+    Section("Botones de venta", rememberVectorPainter(Icons.Default.Create), "Íconos, opacidad y tamaño del texto") {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Mostrar íconos", Modifier.weight(1f))
             Switch(showIcons, { showIcons = it })
@@ -287,13 +352,13 @@ private fun AppearanceTab(state: SettingsUiState, vm: SettingsViewModel, report:
         Button({ vm.saveAppearance(showIcons, opacity, textSize); report(null, "Preferencias guardadas") }) { Text("Guardar") }
     }
 
-    Section("Colores de los botones") {
+    Section("Colores de los botones", rememberVectorPainter(Icons.Default.Star)) {
         Text("Fondo, borde y opacidad de cada botón de venta")
         OutlinedButton(onButtonColors, Modifier.fillMaxWidth()) { Text("Personalizar colores") }
     }
 
-    Section("Margen final del PDF") {
-        Text("Espacio en blanco al final del reporte impreso (puntos)")
+    Section("Margen final del PDF", painterResource(R.drawable.ic_print), "Espacio en blanco al final del reporte impreso") {
+        Text("En puntos (69 por defecto)", fontSize = 12.sp, color = Color(0xFF6B7C8C))
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 margin, { margin = it }, Modifier.width(140.dp), singleLine = true,
@@ -308,7 +373,7 @@ private fun AppearanceTab(state: SettingsUiState, vm: SettingsViewModel, report:
 @Composable
 private fun AbbreviationsTab(state: SettingsUiState, vm: SettingsViewModel) {
     var edited by remember(state.abbreviations) { mutableStateOf(state.abbreviations) }
-    Section("Abreviaturas para el PDF") {
+    Section("Abreviaturas para el PDF", painterResource(R.drawable.ic_receipt), "Nombre corto de cada tarifa en el cierre de caja") {
         edited.forEach { (name, abbr) ->
             OutlinedTextField(
                 abbr, { edited = edited + (name to it) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(name) },

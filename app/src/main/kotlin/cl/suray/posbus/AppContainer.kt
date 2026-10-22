@@ -3,6 +3,7 @@ package cl.suray.posbus
 import android.app.Activity
 import android.content.Context
 import cl.suray.posbus.print.AndroidPrinter
+import cl.suray.posbus.print.sunmi.SunmiPrinterClient
 import cl.suray.posbus.data.backup.BackupService
 import cl.suray.posbus.data.backup.RoomBackupDatabase
 import cl.suray.posbus.data.db.AppDatabase
@@ -52,6 +53,8 @@ class AppContainer(context: Context) {
             RoomBackupDatabase(appContext) { db }, clock, excludedKeys = setOf(AppPrefs.KEY_SUMUP_AFFILIATE_KEY),
         )
     }
+
+    val sunmi = SunmiPrinterClient(appContext)
 
     val cardPayments = CardPayments(prefs, clock)
 

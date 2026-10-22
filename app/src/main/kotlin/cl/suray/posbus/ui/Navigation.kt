@@ -26,6 +26,7 @@ import cl.suray.posbus.ui.report.ReportScreen
 import cl.suray.posbus.ui.report.ReportViewModel
 import cl.suray.posbus.ui.settings.ButtonColorsScreen
 import cl.suray.posbus.ui.settings.ButtonColorsViewModel
+import cl.suray.posbus.ui.settings.PrinterDiagViewModel
 import cl.suray.posbus.ui.settings.SettingsScreen
 import cl.suray.posbus.ui.transfer.TransferScreen
 import cl.suray.posbus.ui.settings.SettingsViewModel
@@ -74,7 +75,8 @@ fun SurayNavHost(container: AppContainer) {
         }
         composable(Destination.Settings.name) {
             val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory(container))
-            SettingsScreen(vm = vm, onBack = { nav.popBackStack() }, onButtonColors = { nav.navigate(BUTTON_COLORS) })
+            val printerVm: PrinterDiagViewModel = viewModel(factory = PrinterDiagViewModel.Factory(container))
+            SettingsScreen(vm = vm, printerVm = printerVm, onBack = { nav.popBackStack() }, onButtonColors = { nav.navigate(BUTTON_COLORS) })
         }
         composable(Destination.Transfer.name) {
             TransferScreen(onBack = { nav.popBackStack() })

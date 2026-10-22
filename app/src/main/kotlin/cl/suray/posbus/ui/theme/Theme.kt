@@ -42,6 +42,15 @@ fun SurayTheme(content: @Composable () -> Unit) {
             error = SurayColors.Error,
             background = SurayColors.Background,
             surface = Color.White,
+            // Diálogos, hojas y tarjetas con tonos de la paleta (sin el lila por defecto de Material 3).
+            surfaceContainerHigh = Color.White,
+            surfaceContainerHighest = SurayColors.PrimaryLight,
+            surfaceContainer = SurayColors.Background,
+            surfaceVariant = SurayColors.PrimaryLight,
+            primaryContainer = SurayColors.PrimaryLight,
+            secondaryContainer = SurayColors.PrimaryLight,
+            onSecondaryContainer = SurayColors.PrimaryDark,
+            onPrimaryContainer = SurayColors.PrimaryDark,
         ),
         content = content,
     )
