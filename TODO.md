@@ -51,12 +51,12 @@ Aviso: la clave de afiliado sigue escrita en el código de **Flutter** (`sumup_s
 - **Reporte de caja** (`ui/report`): resumen, lista con colores por tipo, orden nuevo/antiguo, efectivo vs tarjeta, botón "Cerrar Caja e Imprimir". Verificado en el equipo: con 3 ventas ($7.900) el cierre falla por no haber impresora y la caja se conserva.
 
 ### Tests
-- JVM: 62, todos pasan.
+- JVM: 73, todos pasan (`SettingsInputTest`, `PrintLayoutsTest`).
 - En el equipo (Sunmi, Android 6.0): **18 pasaron**, ninguno falla. Incluyen datos, cierre automático y fusión, seguridad y el cierre manual contra Room real (guarda y vacía; el segundo cierre del día fusiona; impresión fallida no toca nada).
 
 ## Lo que falta
 ### Pantallas (fase 4)
-1. **Ajustes** (en Flutter `settings.dart`, ~3100 líneas; hacerlo por secciones): tarifas L-S y domingo, claves (app, ajustes, comprobante), tarjetas NFC vinculadas, activar SumUp + escribir la clave de afiliado, margen del PDF (`pdfEndMargin`), N° de comprobante, abreviaturas de tarifas para el PDF. **Sin esto no hay dónde cambiar tarifas ni la clave de SumUp.**
+1. ~~**Ajustes**~~ **Hecho (2026-10-22)**, `ui/settings`: protegido con la clave de Ajustes; pestañas General (ID de terminal, reinicio del contador con clave del comprobante, cambio de las 3 claves, SumUp + clave de afiliado, lista/quitar tarjetas NFC), Precios (editar/restaurar L-S y domingo), Apariencia (íconos, opacidad, tamaño de texto, margen PDF) y Abreviaturas. Los cambios llegan a Home vía `AppContainer.settingsRevision`. Verificado en el equipo: acceso con clave, edición de tarifa persistida. **Falta:** vincular tarjetas NFC nuevas (con la fase NFC), íconos personalizables por botón, y que Home use `buttonOpacity`. Margen PDF por defecto corregido a 69 (antes 0; Flutter usa 69).
 2. **Cargo** (`cargo_screen`) y **Oferta** (diálogo múltiple de `home.dart`): hoy los botones solo muestran "pendiente de portar".
 3. **Recuperación de reportes** (`reporte_recovery`, 789 líneas) — el botón "Anteriores" del reporte ya apunta ahí.
 4. **Estadísticas** (la lógica ya está en `domain/Statistics.kt`; falta la pantalla y los gráficos).
@@ -66,8 +66,9 @@ Aviso: la clave de afiliado sigue escrita en el código de **Flutter** (`sumup_s
 8. Pequeños pendientes de Login/Home: acceso por NFC, barra de título "Inicio de Sesión", verificar el diálogo de anular con el teclado abierto, ancho del menú lateral (ya acotado a 300 dp, sin ver en pantalla), íconos personalizables de botones.
 
 ### Integraciones (fase 5)
-- **Impresión** (lo más riesgoso): hoy `UnavailableTicketPrinter` y `UnavailableReportPrinter` lanzan error a propósito. Hay que implementar tickets (normal, oferta/MO, cargo con copia cliente y cargo) y reporte en PDF 58 mm con `PdfDocument` + `PrintManager` (Flutter usa `Printing.layoutPdf`). Recursos: `logobkwt`, `headTicket`, `endTicket`, `tijera`. Opcional después: servicio de impresora Sunmi para imprimir sin diálogo. Las interfaces `TicketPrinter` / `ReportPrinter` ya están conectadas a Home y Reporte.
-- **Reimpresión** desde Home (hoy el botón no hace nada).
+- **Impresión: ticket normal, reporte de cierre y reimpresión HECHOS (2026-10-22)**, `print/` + `domain/PrintLayouts.kt`. PDF 58 mm dibujado con `PdfDocument` y enviado a `PrintManager` (el Sunmi muestra "SunmiPrinter" con vista previa fiel). El éxito se decide por el estado del `PrintJob` (en cola/en curso/completado), **no** por haber escrito el PDF: el servicio escribe para la vista previa antes de confirmar. Cancelar lanza `PrintCancelledException` → la caja no se vacía. Verificado en el equipo: ticket, reimpresión (comprobante original, una sola vez), cancelación y cierre de caja. El reporte guarda copia en `files/pdfs/reporte_DIA_d_m_yy(n).pdf` solo si se imprimió.
+  - **Falta:** tickets de oferta/MO y de cargo (con copia cliente y cargo; recursos `headticket`, `tijera` aún sin copiar a `res/`), reimpresión de cargo/oferta (hoy avisa "pendiente"), enlazar el nombre del PDF al cierre guardado en Room (`saveManualClosing(pdfFilename)` recibe `null`), y `informe_dia_*.txt` de Flutter (no portado). Opcional: servicio Sunmi AIDL para imprimir sin diálogo.
+  - Diferencia con Flutter: en la sección Anulaciones los valores salen con signo `-` (Flutter lo intentaba pero un error de comparación de título lo omitía). El margen final del PDF usa `pdfEndMargin` (Flutter fijaba 69).
 - **NFC** (`NfcAdapter.enableReaderMode`), login y clave por tarjeta; la lógica ya está en `NfcAuth`.
 - **SumUp**: intent `sumupmerchant://pay/1.0` (`affiliate-key`, `app-id=posbus`, `amount`, `currency=CLP`, `title`, `callback=posbus://sumup-result`), recibir el resultado en `onNewIntent`/`onCreate` con intent-filter. No usar `<queries>` (rompe el parseo en Sunmi) ni `canLaunchUrl`: lanzar y capturar `ActivityNotFoundException`. Guardar pago con `CardPayments` (ya implementado).
 - **Backup**: permisos de almacenamiento en tiempo de ejecución en API 23 y `FileProvider` para compartir.
@@ -78,7 +79,7 @@ Aviso: la clave de afiliado sigue escrita en el código de **Flutter** (`sumup_s
 - Medir rendimiento y RAM en el V1s con Compose.
 
 ## Riesgos y cosas a recordar
-- La impresión depende del hardware y todavía no existe: sin ella el equipo no puede emitir tickets ni cerrar la caja.
+- La impresión normal y el cierre ya funcionan; siguen sin existir los tickets de oferta y cargo.
 - Ventas de días mezclados en un cierre manual se guardan bajo la fecha del reporte (la de la primera venta si todas son del mismo día, si no la fecha actual); no se ha comparado con Flutter.
 - Cuando el equipo se conecte de nuevo: comprobar que la app Flutter y la nueva conviven (distinto applicationId).
-- Orden sugerido para continuar: Ajustes → impresión (tickets + reporte) → Oferta/Cargo → SumUp → NFC → Recuperación/Estadísticas → Backup → Transferencia/Seguridad/Colores → migración de datos.
+- Orden sugerido para continuar: ~~Ajustes~~ → ~~impresión (ticket + reporte)~~ → Oferta/Cargo → SumUp → NFC → Recuperación/Estadísticas → Backup → Transferencia/Seguridad/Colores → migración de datos.

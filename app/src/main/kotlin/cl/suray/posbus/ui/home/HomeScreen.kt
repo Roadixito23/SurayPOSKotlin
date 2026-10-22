@@ -103,6 +103,7 @@ fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onLogout: (
 
     var payment by remember { mutableStateOf<Tarifa?>(null) }
     var askCancel by remember { mutableStateOf(false) }
+    var askReprint by remember { mutableStateOf(false) }
     var pendingAlert by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(Unit) {
@@ -148,7 +149,7 @@ fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onLogout: (
                         state = state,
                         onMenu = { scope.launch { drawer.open() } },
                         onCancel = { askCancel = true },
-                        onReprint = { /* reimpresión: fase de integraciones */ },
+                        onReprint = { askReprint = true },
                     )
                     if (state.hasPending) PendingBanner(onClose = { onNavigate(Destination.Reports) })
                     StatusBand(state, onRate = vm::setSundayRate)
@@ -172,6 +173,14 @@ fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onLogout: (
             verify = vm::verifyPassword,
             onConfirmed = { askCancel = false; vm.cancelLast() },
             onDismiss = { askCancel = false },
+        )
+    }
+    if (askReprint) {
+        PasswordDialog(
+            title = "Reimprimir último ticket",
+            verify = vm::verifyPassword,
+            onConfirmed = { askReprint = false; vm.reprintLast() },
+            onDismiss = { askReprint = false },
         )
     }
     pendingAlert?.let { days ->
@@ -318,7 +327,7 @@ private fun SalesGrid(state: HomeUiState, vm: HomeViewModel, onSell: (Tarifa) ->
     fun fare(i: Int, icon: @Composable () -> Unit, textColor: Color = Color.White, fallback: Tarifa? = null) {
         val t = fares.getOrNull(i) ?: fallback ?: return
         val c = vm.colors.fare(i, sunday)
-        SaleButton(t.nombre, icon, c, textColor, enabled, vm.display) { onSell(t) }
+        SaleButton(t.nombre, icon, c, textColor, enabled, state.display) { onSell(t) }
     }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
@@ -341,10 +350,10 @@ private fun SalesGrid(state: HomeUiState, vm: HomeViewModel, onSell: (Tarifa) ->
             SectionHeader("OTROS")
             Row(Modifier.height(60.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(Modifier.weight(1f)) {
-                    SaleButton("O F E R T A", { Icon(Icons.Default.Star, null) }, vm.colors.otros(0), Color.Black, enabled, vm.display) { vm.notifyPending("Oferta") }
+                    SaleButton("O F E R T A", { Icon(Icons.Default.Star, null) }, vm.colors.otros(0), Color.Black, enabled, state.display) { vm.notifyPending("Oferta") }
                 }
                 Box(Modifier.weight(1f)) {
-                    SaleButton("C A R G O", { Icon(Icons.Default.ShoppingCart, null) }, vm.colors.otros(1), Color.Black, enabled, vm.display) { vm.notifyPending("Cargo") }
+                    SaleButton("C A R G O", { Icon(Icons.Default.ShoppingCart, null) }, vm.colors.otros(1), Color.Black, enabled, state.display) { vm.notifyPending("Cargo") }
                 }
             }
         }

@@ -43,6 +43,7 @@ data class HomeUiState(
     val fares: List<Tarifa> = emptyList(),
     val busy: Boolean = false,
     val cardAvailable: Boolean = false,
+    val display: DisplayPrefs = DisplayPrefs(showIcons = true, textSizeMultiplier = 0.8f),
 ) {
     val hasPending: Boolean get() = pendingDays > 0
 }
@@ -66,10 +67,6 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     /** Días pendientes cuando hay que mostrar el diálogo de cierre obligatorio. */
     val pendingAlert: SharedFlow<Int> = _pendingAlert.asSharedFlow()
 
-    val display = DisplayPrefs(
-        showIcons = c.prefs.showIcons,
-        textSizeMultiplier = c.prefs.textSizeMultiplier,
-    )
     val colors: ButtonPalette = ButtonPalette.load(c.prefs)
 
     private val base = combine(c.register.changes, c.comprobante.numberState, today, pendingDays) { open, number, day, pending ->
@@ -88,7 +85,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     val state: StateFlow<HomeUiState> = combine(
-        base, sundayRate, autoRate, holidayReason, combine(busy, hasReprinted, hasCancelled, lastTransaction) { a, b, d, e -> listOf(a, b, d, e) },
+        base, sundayRate, autoRate, holidayReason, combine(busy, hasReprinted, hasCancelled, lastTransaction, c.settingsRevision) { a, b, d, e, _ -> listOf(a, b, d, e) },
     ) { s, sunday, auto, reason, flags ->
         val isBusy = flags[0] as Boolean
         val reprinted = flags[1] as Boolean
@@ -104,6 +101,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             fares = if (sunday) c.prefs.sundayFares else c.prefs.weekdayFares,
             busy = isBusy,
             cardAvailable = SumUpConfig.isReady(c.prefs.sumUpEnabled, c.prefs.sumUpAffiliateKey),
+            display = DisplayPrefs(c.prefs.showIcons, c.prefs.textSizeMultiplier),
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
 
@@ -197,6 +195,31 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                 hasCancelled.value = true
                 _messages.tryEmit(UiMessage("Última venta anulada."))
             }
+        }
+    }
+
+    /** Reimprime la última venta con su comprobante original; solo una vez (salvo cargo). */
+    fun reprintLast() {
+        val last = lastTransaction.value
+        if (last == null) {
+            _messages.tryEmit(UiMessage("No hay transacción para reimprimir", MessageKind.Warning))
+            return
+        }
+        if (busy.value) return
+        if (last.nombre.lowercase().contains("cargo")) {
+            _messages.tryEmit(UiMessage("Reimpresión de cargo: pendiente de portar", MessageKind.Warning))
+            return
+        }
+        if (hasReprinted.value) {
+            _messages.tryEmit(UiMessage("Ya se ha reimpreso este boleto. Genere uno nuevo para reimprimir.", MessageKind.Warning))
+            return
+        }
+        viewModelScope.launch {
+            busy.value = true
+            runCatching { c.printer.printTicket(last.nombre, last.valor, last.comprobante, last.switchValue, reprint = true) }
+                .onSuccess { hasReprinted.value = true; _messages.tryEmit(UiMessage("Ticket reimpreso", MessageKind.Success)) }
+                .onFailure { _messages.tryEmit(UiMessage("Error al reimprimir: ${it.message}", MessageKind.Error)) }
+            busy.value = false
         }
     }
 

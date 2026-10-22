@@ -138,8 +138,13 @@ class AppPrefs(private val sp: SharedPreferences) :
         set(value) = sp.edit().putFloat(KEY_TEXT_SIZE_MULTIPLIER, value).apply()
 
     var pdfEndMargin: Float
-        get() = sp.getFloat(KEY_PDF_END_MARGIN, 0f)
+        get() = sp.getFloat(KEY_PDF_END_MARGIN, DEFAULT_PDF_END_MARGIN)
         set(value) = sp.edit().putFloat(KEY_PDF_END_MARGIN, value).apply()
+
+    /** Abreviatura de tarifa para el PDF; la clave de preferencia es el nombre de la tarifa (como en Flutter). */
+    fun abbreviation(name: String): String = sp.getString(name, null) ?: DEFAULT_ABBREVIATIONS[name] ?: name
+
+    fun setAbbreviation(name: String, value: String) = sp.edit().putString(name, value).apply()
 
     // --- Seguridad ----------------------------------------------------------------------------
 
@@ -211,6 +216,19 @@ class AppPrefs(private val sp: SharedPreferences) :
         const val KEY_COMPROBANTE_SETTINGS_PASSWORD = "comprobanteSettingsPassword"
         const val KEY_FAILED_ATTEMPTS = "failedAttempts"
         const val KEY_LAST_LOCK_TIME = "lastLockTime"
+
+        const val DEFAULT_PDF_END_MARGIN = 69f
+
+        val DEFAULT_ABBREVIATIONS = linkedMapOf(
+            "Público General" to "PG",
+            "Escolar General" to "Esc.",
+            "Adulto Mayor" to "AM",
+            "Escolar Intermedio" to "Int.E",
+            "Intermedio hasta 15 Km" to "Int.15",
+            "Intermedio hasta 50 Km" to "Int.50",
+            "Oferta Ruta" to "OR",
+            "Cargo" to "Cargo",
+        )
 
         val DEFAULT_WEEKDAY_FARES = listOf(
             Tarifa("Público General", 3600.0),

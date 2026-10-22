@@ -17,6 +17,8 @@ import cl.suray.posbus.ui.home.HomeViewModel
 import cl.suray.posbus.ui.login.LoginScreen
 import cl.suray.posbus.ui.report.ReportScreen
 import cl.suray.posbus.ui.report.ReportViewModel
+import cl.suray.posbus.ui.settings.SettingsScreen
+import cl.suray.posbus.ui.settings.SettingsViewModel
 
 private const val LOGIN = "login"
 private const val HOME = "home"
@@ -47,7 +49,11 @@ fun SurayNavHost(container: AppContainer) {
                 onOldReports = { nav.navigate(Destination.Recovery.name) },
             )
         }
-        Destination.entries.filter { it != Destination.Reports }.forEach { d ->
+        composable(Destination.Settings.name) {
+            val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory(container))
+            SettingsScreen(vm = vm, onBack = { nav.popBackStack() })
+        }
+        Destination.entries.filter { it != Destination.Reports && it != Destination.Settings }.forEach { d ->
             composable(d.name) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("${d.label}: pendiente de portar") }
             }
