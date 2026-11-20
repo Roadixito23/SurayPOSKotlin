@@ -1,5 +1,11 @@
 package cl.suray.posbus.ui.cargo
 
+import cl.suray.posbus.ui.theme.SurayColors
+import cl.suray.posbus.ui.components.surayFieldColors
+import cl.suray.posbus.ui.components.SurayFieldShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -62,23 +68,27 @@ fun CargoScreen(onSubmit: (CargoData) -> Unit, onBack: () -> Unit) {
             Card(Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Destino: $destino", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    TextButton({ destino = CargoInput.toggleDestination(destino) }) { Text("Cambiar") }
+                    TextButton({ destino = CargoInput.toggleDestination(destino) }) { Text("Cambiar", color = SurayColors.Amber900) }
                 }
             }
             OutlinedTextField(
                 articulo, { articulo = it; error = null }, Modifier.fillMaxWidth(), label = { Text("Descripción del Artículo *") }, singleLine = true,
+                shape = SurayFieldShape, colors = surayFieldColors(),
             )
             OutlinedTextField(
                 precio, { precio = it.filter(Char::isDigit).take(8); error = null }, Modifier.fillMaxWidth(),
                 label = { Text("Precio *") }, prefix = { Text("$ ") }, singleLine = true,
+                shape = SurayFieldShape, colors = surayFieldColors(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             )
             OutlinedTextField(
                 destinatario, { destinatario = it; error = null }, Modifier.fillMaxWidth(), label = { Text("Nombre del Destinatario *") }, singleLine = true,
+                shape = SurayFieldShape, colors = surayFieldColors(),
             )
             OutlinedTextField(
                 telefono, { telefono = it.filter(Char::isDigit).take(CargoInput.MAX_PHONE_DIGITS) }, Modifier.fillMaxWidth(),
                 label = { Text("Teléfono (opcional)") }, placeholder = { Text("(Incluir el 9)") }, singleLine = true,
+                shape = SurayFieldShape, colors = surayFieldColors(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
             )
             error?.let { Text(it, color = Color.Red) }
@@ -86,7 +96,9 @@ fun CargoScreen(onSubmit: (CargoData) -> Unit, onBack: () -> Unit) {
                 val e = CargoInput.validate(articulo, precio, destinatario)
                 if (e != null) error = e
                 else onSubmit(CargoData(destino, articulo.trim(), precio.trim().toDouble(), destinatario.trim(), telefono))
-            }, Modifier.fillMaxWidth()) { Text("Imprimir Ticket de Cargo") }
+            }, Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SurayColors.Amber800),
+            ) { Text("Imprimir Ticket de Cargo", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
         }
     }
 }

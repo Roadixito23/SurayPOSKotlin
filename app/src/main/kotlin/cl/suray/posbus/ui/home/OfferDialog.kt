@@ -1,5 +1,9 @@
 package cl.suray.posbus.ui.home
 
+import cl.suray.posbus.ui.components.surayFieldColors
+import cl.suray.posbus.ui.components.SurayFieldShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -72,11 +76,13 @@ fun OfferDialog(onSubmit: (List<OfferEntry>) -> String?, onClose: () -> Unit) {
                             OutlinedTextField(
                                 line.number, { lines[i] = line.copy(number = it.filter(Char::isDigit).take(4)); error = null },
                                 Modifier.weight(2f), label = { Text("Cantidad") }, singleLine = true,
+                                shape = SurayFieldShape, colors = surayFieldColors(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             )
                             OutlinedTextField(
                                 line.value, { lines[i] = line.copy(value = it.filter(Char::isDigit).take(7)); error = null },
                                 Modifier.weight(3f), label = { Text("Valor") }, singleLine = true,
+                                shape = SurayFieldShape, colors = surayFieldColors(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             )
                             if (lines.size > 1) {
@@ -92,13 +98,14 @@ fun OfferDialog(onSubmit: (List<OfferEntry>) -> String?, onClose: () -> Unit) {
                 }
                 error?.let { Text(it, color = Color.Red, modifier = Modifier.padding(bottom = 8.dp)) }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Button({ lines.add(OfferEntry("", "")) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))) {
+                    OutlinedButton({ lines.add(OfferEntry("", "")) }, colors = ButtonDefaults.outlinedButtonColors(contentColor = Amber)) {
                         Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("Agregar línea")
                     }
                     Button(
                         { val r = onSubmit(lines.toList()); if (r == null) onClose() else error = r },
+                        shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Amber),
-                    ) { Text("Imprimir") }
+                    ) { Text("Imprimir", fontWeight = FontWeight.Bold) }
                 }
             }
         }

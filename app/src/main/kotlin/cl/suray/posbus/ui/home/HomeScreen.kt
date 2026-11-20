@@ -1,5 +1,6 @@
 package cl.suray.posbus.ui.home
 
+import cl.suray.posbus.ui.components.PasswordPromptDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -162,19 +163,19 @@ fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onCargo: ()
         )
     }
     if (askCancel) {
-        PasswordDialog(
+        PasswordPromptDialog(
             title = "Anular última venta",
             verify = vm::verifyPassword,
-            onConfirmed = { askCancel = false; vm.cancelLast() },
-            onDismiss = { askCancel = false },
+            onSuccess = { askCancel = false; vm.cancelLast() },
+            onCancel = { askCancel = false },
         )
     }
     if (askReprint) {
-        PasswordDialog(
+        PasswordPromptDialog(
             title = "Reimprimir último ticket",
             verify = vm::verifyPassword,
-            onConfirmed = { askReprint = false; if (state.lastIsCargo) cargoCopies = true else vm.reprintLast() },
-            onDismiss = { askReprint = false },
+            onSuccess = { askReprint = false; if (state.lastIsCargo) cargoCopies = true else vm.reprintLast() },
+            onCancel = { askReprint = false },
         )
     }
     if (cargoCopies) {
@@ -427,29 +428,4 @@ private fun PaymentSheet(tarifa: Tarifa, onCash: () -> Unit, onCard: () -> Unit,
             }
         }
     }
-}
-
-@Composable
-private fun PasswordDialog(title: String, verify: (String) -> Boolean, onConfirmed: () -> Unit, onDismiss: () -> Unit) {
-    var input by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
-    fun check() { if (verify(input)) onConfirmed() else { error = true; input = "" } }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title, fontWeight = FontWeight.Bold) },
-        text = {
-            OutlinedTextField(
-                value = input,
-                onValueChange = { if (it.length <= 6) { input = it; error = false } },
-                label = { Text("Contraseña") },
-                supportingText = { Text(if (error) "Contraseña incorrecta" else "Máximo 6 dígitos") },
-                isError = error,
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-            )
-        },
-        confirmButton = { Button(onClick = ::check) { Text("Confirmar") } },
-        dismissButton = { TextButton(onDismiss) { Text("Cancelar") } },
-    )
 }
