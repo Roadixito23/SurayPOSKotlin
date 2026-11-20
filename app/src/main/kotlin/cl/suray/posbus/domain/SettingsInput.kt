@@ -22,3 +22,32 @@ object SettingsInput {
     fun pdfMargin(text: String): Float? =
         text.trim().replace(',', '.').toFloatOrNull()?.takeIf { it in 0f..MAX_PDF_MARGIN }
 }
+
+/** Motivo por el que un cambio de clave se rechaza. */
+enum class PasswordChangeError { CurrentWrong, InvalidLength, Mismatch }
+
+/** Validación pura del formulario «Cambiar clave» (clave actual + nueva + repetir). */
+object PasswordChange {
+    /**
+     * Orden de comprobación: primero la clave actual, luego el largo de la nueva y por último que coincida con la repetición.
+     * @param exactLength `true` para la clave del comprobante (exactamente 6 tras `trim`); si no, al menos 6 caracteres.
+     * @return `null` si el cambio es válido.
+     */
+    fun validate(currentMatches: Boolean, new: String, repeat: String, exactLength: Boolean): PasswordChangeError? = when {
+        !currentMatches -> PasswordChangeError.CurrentWrong
+        !lengthOk(new, exactLength) -> PasswordChangeError.InvalidLength
+        new != repeat -> PasswordChangeError.Mismatch
+        else -> null
+    }
+
+    private fun lengthOk(new: String, exactLength: Boolean) =
+        if (exactLength) new.trim().length == PasswordManager.COMPROBANTE_LENGTH else new.length >= PasswordManager.MIN_LENGTH
+
+    fun message(error: PasswordChangeError, exactLength: Boolean) = when (error) {
+        PasswordChangeError.CurrentWrong -> "Clave actual incorrecta"
+        PasswordChangeError.InvalidLength ->
+            if (exactLength) "Debe tener exactamente ${PasswordManager.COMPROBANTE_LENGTH} caracteres"
+            else "Debe tener al menos ${PasswordManager.MIN_LENGTH} caracteres"
+        PasswordChangeError.Mismatch -> "Las claves no coinciden"
+    }
+}

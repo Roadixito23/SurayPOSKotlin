@@ -1,54 +1,31 @@
 package cl.suray.posbus.ui.login
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import cl.suray.posbus.domain.LockoutPolicy
+import cl.suray.posbus.ui.components.PasswordField
+import cl.suray.posbus.ui.components.SurayDialogCard
+import cl.suray.posbus.ui.components.rememberAutoFocus
 import cl.suray.posbus.ui.theme.SurayColors
 import cl.suray.posbus.ui.vibrateError
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
 
-/** Equivale a `LoginScreen`: clave de 6 dígitos. El acceso por NFC se agrega con las integraciones. */
+/**
+ * Equivale a `LoginScreen`: tarjeta flotante (la misma ventana que el resto de las claves) sobre el degradado ámbar.
+ * Mantiene el bloqueo progresivo con cuenta atrás. El acceso por NFC se agrega con las integraciones.
+ */
 @Composable
 fun LoginScreen(verify: (String) -> Boolean, lockout: LockoutPolicy, onSuccess: () -> Unit) {
     val context = LocalContext.current
@@ -64,6 +41,16 @@ fun LoginScreen(verify: (String) -> Boolean, lockout: LockoutPolicy, onSuccess: 
         }
     }
     val locked = remaining > 0
+    val focus = rememberAutoFocus()
+    val keyboard = LocalSoftwareKeyboardController.current
+    // Al terminar el bloqueo el campo se habilita sin foco: se lo devolvemos para que el teclado vuelva solo.
+    LaunchedEffect(locked) {
+        if (!locked) {
+            delay(100)
+            runCatching { focus.requestFocus() }
+            keyboard?.show()
+        }
+    }
 
     fun submit() {
         if (locked) return
@@ -83,55 +70,22 @@ fun LoginScreen(verify: (String) -> Boolean, lockout: LockoutPolicy, onSuccess: 
         Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(SurayColors.Amber800, SurayColors.Amber100))),
-        contentAlignment = Alignment.Center,
+    )
+    SurayDialogCard(
+        title = "Ingrese la Contraseña",
+        onDismiss = {},
+        confirmText = "Ingresar",
+        onConfirm = ::submit,
+        confirmEnabled = !locked,
+        dismissible = false,
+        dimBackground = false,
     ) {
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp)) {
-            Card(
-                shape = RoundedCornerShape(15.dp),
-                elevation = CardDefaults.cardElevation(10.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-            ) {
-                Column(
-                    Modifier.padding(20.dp).fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(20.dp),
-                ) {
-                    Icon(Icons.Default.Lock, null, Modifier.size(60.dp), tint = SurayColors.Amber800)
-                    Text("Ingrese la Contraseña", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xDD000000))
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { if (it.length <= 6) { password = it; error = false } },
-                        label = { Text("Contraseña (6 dígitos)") },
-                        enabled = !locked,
-                        isError = error || locked,
-                        supportingText = {
-                            when {
-                                locked -> Text("Demasiados intentos. Espere $remaining s")
-                                error -> Text("Contraseña incorrecta")
-                            }
-                        },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { submit() }),
-                        textStyle = TextStyle(fontSize = 18.sp, letterSpacing = 8.sp, textAlign = TextAlign.Center),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = SurayColors.Amber800,
-                            focusedLabelColor = SurayColors.Amber800,
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Button(
-                        onClick = ::submit,
-                        enabled = !locked,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = SurayColors.Amber800),
-                        elevation = ButtonDefaults.buttonElevation(5.dp),
-                        modifier = Modifier.fillMaxWidth().height(50.dp),
-                    ) { Text("Ingresar", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-                }
-            }
-        }
+        PasswordField(
+            password, { password = it; error = false }, if (error) "Clave incorrecta" else "Clave",
+            Modifier.focusRequester(focus),
+            isError = error || locked, enabled = !locked,
+            supporting = if (locked) "Demasiados intentos. Espere $remaining s" else null,
+            onImeAction = ::submit,
+        )
     }
 }
