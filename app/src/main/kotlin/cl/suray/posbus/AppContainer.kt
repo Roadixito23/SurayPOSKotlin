@@ -33,11 +33,11 @@ class AppContainer(context: Context) {
     val db: AppDatabase by lazy { AppDatabase.get(appContext) }
     val clock = SystemClock
 
-    val register = CashRegister(prefs, clock)
+    val register = CashRegister(prefs, clock, batcher = prefs)
     val comprobante = ComprobanteCounter(prefs)
     val passwords = PasswordManager(prefs).also { it.seedDefaults() }
     val lockout = LockoutPolicy(prefs, clock)
-    val closing: ClosingService by lazy { ClosingService(db, prefs, register, clock) }
+    val closing: ClosingService by lazy { ClosingService(db, prefs, register, clock, batcher = prefs) }
     val holidays = HolidayService(prefs)
     val pending = PendingTransactionService(register)
 

@@ -15,13 +15,19 @@ class ComprobanteCounter(private val store: ComprobanteStore) {
     /** Último número usado; el próximo a imprimir es `number + 1`. */
     val numberState: StateFlow<Int> = _number
 
-    val number: Int get() = store.comprobanteNumber
+    val number: Int get() = _number.value
     val ticketId: Int get() = store.ticketId
 
-    val formatted: String get() = format(store.ticketId, store.comprobanteNumber)
+    val formatted: String get() = format(store.ticketId, _number.value)
 
+    /** Vuelve a leer el contador del almacén (p. ej. tras descartar un lote de escrituras que falló). */
+    fun reload() {
+        _number.value = store.comprobanteNumber
+    }
+
+    // El número en memoria es la referencia: dentro de un lote de escrituras el almacén aún no confirma.
     fun increment() {
-        var next = store.comprobanteNumber + 1
+        var next = _number.value + 1
         if (next > MAX_NUMBER) next = 1
         store.comprobanteNumber = next
         _number.value = next
@@ -29,9 +35,9 @@ class ComprobanteCounter(private val store: ComprobanteStore) {
 
     /** Al anular la última venta el contador retrocede 1, pero nunca por debajo de 1 (igual que Flutter). */
     fun rollbackLast() {
-        if (store.comprobanteNumber > 1) {
-            store.comprobanteNumber -= 1
-            _number.value = store.comprobanteNumber
+        if (_number.value > 1) {
+            store.comprobanteNumber = _number.value - 1
+            _number.value = _number.value - 1
         }
     }
 

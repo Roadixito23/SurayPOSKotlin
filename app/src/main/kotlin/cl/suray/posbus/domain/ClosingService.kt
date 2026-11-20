@@ -21,6 +21,7 @@ class ClosingService(
     private val register: CashRegister,
     private val clock: Clock = SystemClock,
     private val timeZone: TimeZone = TimeZone.getDefault(),
+    private val batcher: PrefsBatch = PrefsBatch.None,
 ) : ManualClosingSaver {
     private fun todayIso() = LocalDay.of(clock.nowMillis(), timeZone).iso()
 
@@ -33,9 +34,8 @@ class ClosingService(
             lastDate.lastTransactionDate = today
             return AutoCloseResult.NotNeeded
         }
-        return runCatchingCancellable { performAutoClose(last) }.fold(
+        return runCatchingCancellable { performAutoClose(last, today) }.fold(
             onSuccess = {
-                lastDate.lastTransactionDate = today
                 AutoCloseResult.Closed
             },
             onFailure = { AutoCloseResult.Failed(it) },
@@ -51,7 +51,7 @@ class ClosingService(
         return last != null && last != todayIso() && register.hasActive()
     }
 
-    private suspend fun performAutoClose(closingDate: String) {
+    private suspend fun performAutoClose(closingDate: String, today: String) {
         val transactions = register.ordered()
         val day = LocalDay.parse(closingDate) ?: throw IllegalStateException("Fecha inválida: $closingDate")
 
@@ -59,7 +59,11 @@ class ClosingService(
         if (existing != null) merge(existing, transactions)
         else createNew(transactions, day, ClosingTotals.forAutoClose(transactions))
 
-        register.clear()
+        // Vaciar la caja y fijar la fecha de hoy se confirman juntos: o ambas o ninguna.
+        batcher.batch {
+            register.clear()
+            lastDate.lastTransactionDate = today
+        }
     }
 
     private suspend fun createNew(

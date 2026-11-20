@@ -14,9 +14,12 @@ class CashRegister(
     private val store: OpenRegisterStore,
     private val clock: Clock = SystemClock,
     private val timeZone: TimeZone = TimeZone.getDefault(),
+    private val batcher: PrefsBatch = PrefsBatch.None,
 ) {
     private val transactions: MutableList<OpenTransaction> = store.openTransactions.toMutableList()
-    private var nextId: Int = store.openNextId.let { saved ->
+    private var nextId: Int = loadNextId()
+
+    private fun loadNextId(): Int = store.openNextId.let { saved ->
         // Sin contador guardado (1 es el valor por defecto) se recalcula desde los datos cargados.
         if (saved == 1 && transactions.isNotEmpty()) transactions.maxOf { it.id } + 1 else saved
     }
@@ -103,9 +106,20 @@ class CashRegister(
         save()
     }
 
+    /** Descarta el estado en memoria y lo vuelve a leer del almacén (tras un lote de escrituras fallido). */
+    fun reload() {
+        transactions.clear()
+        transactions.addAll(store.openTransactions)
+        nextId = loadNextId()
+        _changes.value = transactions.toList()
+    }
+
+    /** Lista y contador se guardan juntos: nunca queda uno sin el otro. */
     private fun save() {
-        store.openTransactions = transactions.toList()
-        store.openNextId = nextId
+        batcher.batch {
+            store.openTransactions = transactions.toList()
+            store.openNextId = nextId
+        }
         _changes.value = transactions.toList()
     }
 }

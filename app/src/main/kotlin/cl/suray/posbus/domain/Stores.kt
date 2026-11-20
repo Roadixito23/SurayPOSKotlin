@@ -21,3 +21,13 @@ interface HolidayStore {
     fun setHolidaysFungible(year: Int, value: Boolean)
     fun clearHolidays(year: Int)
 }
+
+/** Agrupa escrituras de preferencias en un único commit síncrono (todo o nada). Ver `AppPrefs.batch`. */
+interface PrefsBatch {
+    fun <T> batch(block: () -> T): T
+
+    /** Sin lotes: ejecuta el bloque tal cual (para tests y valores por defecto). */
+    object None : PrefsBatch {
+        override fun <T> batch(block: () -> T): T = block()
+    }
+}

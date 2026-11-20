@@ -18,6 +18,8 @@ import cl.suray.posbus.domain.DAYS_ES_UPPER
 import cl.suray.posbus.domain.DateParts
 import cl.suray.posbus.domain.LocalDay
 import cl.suray.posbus.domain.SumUpConfig
+import cl.suray.posbus.domain.cancelLastSale
+import cl.suray.posbus.domain.recordSale
 import cl.suray.posbus.domain.runCatchingCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -211,7 +213,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         announce: String,
         doneText: String,
         failText: String,
-        record: suspend (comprobante: String) -> LastTransaction,
+        record: (comprobante: String) -> LastTransaction,
         print: suspend (LastTransaction) -> Unit,
     ) {
         if (busy.value) return
@@ -241,14 +243,19 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                 hasCancelled.value = false
                 _messages.tryEmit(UiMessage(announce))
 
-                // El comprobante se incrementa antes de escribir en la caja, como en Flutter.
-                c.comprobante.increment()
-                val last = runCatchingCancellable { record(c.comprobante.formatted) }.getOrElse {
+                // Comprobante, caja, fecha y última venta se guardan de una vez (un solo commit): si el
+                // equipo se apaga justo después, la venta y su comprobante quedan siempre consistentes.
+                val last = runCatchingCancellable {
+                    recordSale(c.prefs, c.comprobante, c.register) { comprobante ->
+                        record(comprobante).also {
+                            c.closing.updateLastTransactionDate()
+                            c.prefs.lastTransaction = it
+                        }
+                    }
+                }.getOrElse {
                     _messages.tryEmit(UiMessage("Error al guardar venta. Contacte soporte.", MessageKind.Error))
                     return@launch
                 }
-                c.closing.updateLastTransactionDate()
-                c.prefs.lastTransaction = last
                 lastTransaction.value = last
 
                 // La impresión es independiente: un fallo no revierte la venta.
@@ -269,11 +276,14 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     /** Anula la última venta (la caja agrega la línea negativa y el contador retrocede 1). */
     fun cancelLast() {
         viewModelScope.launch {
-            if (c.register.cancelLast()) {
-                c.comprobante.rollbackLast()
-                hasCancelled.value = true
-                _messages.tryEmit(UiMessage("Última venta anulada."))
-            }
+            runCatchingCancellable { cancelLastSale(c.prefs, c.comprobante, c.register) }
+                .onSuccess {
+                    if (it) {
+                        hasCancelled.value = true
+                        _messages.tryEmit(UiMessage("Última venta anulada."))
+                    }
+                }
+                .onFailure { _messages.tryEmit(UiMessage("Error al anular la venta. Contacte soporte.", MessageKind.Error)) }
         }
     }
 
