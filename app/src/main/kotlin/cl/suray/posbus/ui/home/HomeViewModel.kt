@@ -15,6 +15,7 @@ import cl.suray.posbus.data.prefs.Tarifa
 import cl.suray.posbus.domain.CANCELLATION_PREFIX
 import cl.suray.posbus.domain.DAYS_ES_UPPER
 import cl.suray.posbus.domain.DateParts
+import cl.suray.posbus.domain.FareKind
 import cl.suray.posbus.domain.LocalDay
 import cl.suray.posbus.domain.SumUpConfig
 import cl.suray.posbus.domain.cancellableLast
@@ -144,6 +145,9 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         holidayReason.value = result.reason
     }
 
+    /** Tarifa vigente: la única si está activada; si no, la que marca el interruptor L-S / D/F. */
+    private fun currentFare() = FareKind.of(c.prefs.unifiedFare, sundayRate.value)
+
     fun setSundayRate(value: Boolean) {
         sundayRate.value = value
         autoRate.value = false
@@ -154,16 +158,16 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
 
     /** Venta en efectivo: cierre automático → comprobante → caja → última venta → impresión. */
     fun sell(tipo: String, valor: Double) {
-        val sunday = sundayRate.value
+        val fare = currentFare()
         launchSale(
             announce = "Generando ticket de $tipo…",
             doneText = "Ticket generado correctamente",
             failText = "Venta guardada. Error al imprimir ticket.",
             record = { comprobante ->
                 c.register.receiveData(tipo, valor, comprobante)
-                LastTransaction(tipo, valor, comprobante, sunday)
+                LastTransaction(tipo, valor, comprobante, fare == FareKind.SUNDAY, fareKind = fare.name)
             },
-            print = { last -> c.printer.printTicket(tipo, valor, last.comprobante, sunday) },
+            print = { last -> c.printer.printTicket(tipo, valor, last.comprobante, fare) },
         )
     }
 
@@ -173,7 +177,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             is Offers.Result.Invalid -> return r.reason
             is Offers.Result.Ok -> r
         }
-        val sunday = sundayRate.value
+        val fare = currentFare()
         val total = ok.total.toDouble()
         launchSale(
             announce = "Generando oferta…",
@@ -181,7 +185,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             failText = "Oferta guardada. Error al imprimir ticket.",
             record = { comprobante ->
                 c.register.addOffer(total, comprobante)
-                LastTransaction(OFFER_NAME, total, comprobante, sunday, tipo = "ofertaMultiple", offerEntries = ok.entries)
+                LastTransaction(OFFER_NAME, total, comprobante, fare == FareKind.SUNDAY, tipo = "ofertaMultiple", offerEntries = ok.entries, fareKind = fare.name)
             },
             print = { last -> c.printer.printOffer(ok.entries, last.comprobante) },
         )
@@ -190,7 +194,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
 
     /** Cargo: un comprobante, dos copias (cliente y carga) impresas una tras otra. */
     fun sellCargo(data: CargoData) {
-        val sunday = sundayRate.value
+        val fare = currentFare()
         launchSale(
             announce = "Generando cargo…",
             doneText = "Cargo generado correctamente",
@@ -198,7 +202,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             record = { comprobante ->
                 c.register.receiveCargoData(data.destinatario, data.precio, comprobante)
                 LastTransaction(
-                    "$CARGO_PREFIX ${data.destinatario}", data.precio, comprobante, sunday,
+                    "$CARGO_PREFIX ${data.destinatario}", data.precio, comprobante, fare == FareKind.SUNDAY,
                     destinatario = data.destinatario, articulo = data.articulo, destino = data.destino, telefono = data.telefono,
                 )
             },
@@ -297,7 +301,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                 when {
                     cargo != null -> c.printer.printCargo(cargo, last.comprobante, copies, reprint = true)
                     last.isOffer -> c.printer.printOffer(offer.orEmpty(), last.comprobante, reprint = true)
-                    else -> c.printer.printTicket(last.nombre, last.valor, last.comprobante, last.switchValue, reprint = true)
+                    else -> c.printer.printTicket(last.nombre, last.valor, last.comprobante, last.fare, reprint = true)
                 }
             }
                 .onSuccess { if (!last.isCargo) hasReprinted.value = true; _messages.tryEmit(UiMessage("Ticket reimpreso", MessageKind.Success)) }

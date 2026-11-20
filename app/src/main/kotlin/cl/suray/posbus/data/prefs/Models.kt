@@ -1,5 +1,6 @@
 package cl.suray.posbus.data.prefs
 
+import cl.suray.posbus.domain.FareKind
 import kotlinx.serialization.Serializable
 
 /** Tarifa de pasaje (`pasajes` / `sunday_pasajes`). */
@@ -38,7 +39,12 @@ data class LastTransaction(
     val articulo: String? = null,
     val destino: String? = null,
     val telefono: String? = null,
+    /** `FareKind.name` de la tarifa cobrada; ausente en ventas antiguas y de Flutter, que solo traen [switchValue]. */
+    val fareKind: String? = null,
 ) {
+    /** Tarifa de esta venta, para reimprimir con el título original. */
+    val fare: FareKind get() = FareKind.fromStored(fareKind, switchValue)
+
     val isCargo: Boolean get() = nombre.lowercase().contains("cargo")
     val isOffer: Boolean get() = nombre == "Oferta Ruta" || tipo == "ofertaMultiple"
 

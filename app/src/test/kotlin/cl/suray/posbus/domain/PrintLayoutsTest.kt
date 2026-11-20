@@ -25,14 +25,21 @@ class PrintLayoutsTest {
     }
 
     @Test fun ticketTexts() {
-        val t = TicketLayouts.regular("Público General", 3600.0, "01-000123", false, 0L, reprint = false)
+        val t = TicketLayouts.regular("Público General", 3600.0, "01-000123", FareKind.WEEKDAY, 0L, reprint = false)
         assertEquals("N° 01-000123", t.numberLine)
         assertEquals("TARIFA LUNES A SÁBADO", t.tariffLine)
         assertEquals("Valor: \$3.600", t.valueLine)
         assertFalse(t.isReprint)
-        val r = TicketLayouts.regular("Adulto Mayor", 2150.0, "01-000001", true, 0L, reprint = true)
+        val r = TicketLayouts.regular("Adulto Mayor", 2150.0, "01-000001", FareKind.SUNDAY, 0L, reprint = true)
         assertEquals("TARIFA DOMINGO/FERIADO", r.tariffLine)
         assertNotNull(r.reprintedAt)
+    }
+
+    @Test fun ticketTitleFollowsTheFareKind() {
+        fun title(k: FareKind) = TicketLayouts.regular("Público General", 3600.0, "01-000001", k, 0L, reprint = false).tariffLine
+        assertEquals("TARIFA ÚNICA", title(FareKind.UNIFIED))
+        assertEquals("TARIFA LUNES A SÁBADO", title(FareKind.WEEKDAY))
+        assertEquals("TARIFA DOMINGO/FERIADO", title(FareKind.SUNDAY))
     }
 
     @Test fun sectionsAndTotals() {

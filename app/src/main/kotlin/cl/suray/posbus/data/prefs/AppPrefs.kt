@@ -60,6 +60,11 @@ class AppPrefs(private val sp: SharedPreferences) :
         get() = decodeList(KEY_SUNDAY_PASAJES, Tarifa.serializer(), DEFAULT_SUNDAY_FARES)
         set(value) = encodeList(KEY_SUNDAY_PASAJES, Tarifa.serializer(), value)
 
+    /** «Tarifa única toda la semana»: se cobran los precios de lunes a sábado todos los días. Activa por defecto. */
+    var unifiedFare: Boolean
+        get() = sp.getBoolean(KEY_UNIFIED_FARE, true)
+        set(value) = sp.edit().putBoolean(KEY_UNIFIED_FARE, value).apply()
+
     // --- Comprobante --------------------------------------------------------------------------
 
     override var comprobanteNumber: Int
@@ -241,6 +246,7 @@ class AppPrefs(private val sp: SharedPreferences) :
         const val KEY_LAST_TRANSACTION = "lastTransaction"
         const val KEY_PASAJES = "pasajes"
         const val KEY_SUNDAY_PASAJES = "sunday_pasajes"
+        const val KEY_UNIFIED_FARE = "tarifa_unica"
         const val KEY_COMPROBANTE_NUMBER = "comprobanteNumber"
         const val KEY_TICKET_ID = "ticketId"
         const val KEY_HOLIDAYS_CACHE = "holidays_cache_"
