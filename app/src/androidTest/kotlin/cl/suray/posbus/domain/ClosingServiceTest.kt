@@ -52,16 +52,16 @@ class ClosingServiceTest {
         val register = CashRegister(store, clock, utc)
         register.receiveData("A", 100.0, "c")
         val s = service(register)
-        assertFalse(s.checkAndAutoClose())             // sin fecha previa
+        assertEquals(AutoCloseResult.NotNeeded, s.checkAndAutoClose())             // sin fecha previa
         store.lastTransactionDate = "2026-10-21"
-        assertFalse(s.checkAndAutoClose())             // mismo día
+        assertEquals(AutoCloseResult.NotNeeded, s.checkAndAutoClose())             // mismo día
         assertTrue(register.hasActive())
     }
 
     @Test
     fun emptyRegisterOnlyUpdatesDate() = runBlocking {
         store.lastTransactionDate = "2026-10-20"
-        assertFalse(service(CashRegister(store, clock, utc)).checkAndAutoClose())
+        assertEquals(AutoCloseResult.NotNeeded, service(CashRegister(store, clock, utc)).checkAndAutoClose())
         assertEquals("2026-10-21", store.lastTransactionDate)
     }
 
@@ -76,7 +76,7 @@ class ClosingServiceTest {
         val s = service(register)
         assertTrue(s.shouldShowDayChangeAlert())
 
-        assertTrue(s.checkAndAutoClose())
+        assertEquals(AutoCloseResult.Closed, s.checkAndAutoClose())
 
         val closing = db.dailyClosingDao().getByDate("2026-10-20")!!
         assertEquals("MARTES", closing.dayOfWeek)
@@ -97,14 +97,14 @@ class ClosingServiceTest {
         store.lastTransactionDate = "2026-10-20"
         store.openTransactions = listOf(line(1, "Público General", 3600.0))
         store.openNextId = 2
-        assertTrue(service(CashRegister(store, clock, utc)).checkAndAutoClose())
+        assertEquals(AutoCloseResult.Closed, service(CashRegister(store, clock, utc)).checkAndAutoClose())
         val first = db.dailyClosingDao().getByDate("2026-10-20")!!
 
         // Segunda caja del mismo día cerrada tras otro cambio de fecha.
         store.lastTransactionDate = "2026-10-20"
         store.openTransactions = listOf(line(1, "Cargo: Juan", 1000.0), line(2, "Anulación: Cargo: Juan", -1000.0))
         store.openNextId = 3
-        assertTrue(service(CashRegister(store, clock, utc)).checkAndAutoClose())
+        assertEquals(AutoCloseResult.Closed, service(CashRegister(store, clock, utc)).checkAndAutoClose())
 
         assertEquals(1, db.dailyClosingDao().getAll().size)
         val merged = db.dailyClosingDao().getById(first.id)!!

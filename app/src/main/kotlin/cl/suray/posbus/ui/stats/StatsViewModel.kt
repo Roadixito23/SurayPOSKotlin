@@ -7,6 +7,7 @@ import cl.suray.posbus.AppContainer
 import cl.suray.posbus.domain.DaySales
 import cl.suray.posbus.domain.LocalDay
 import cl.suray.posbus.domain.SalesStats
+import cl.suray.posbus.domain.runCatchingCancellable
 import cl.suray.posbus.domain.Statistics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +32,7 @@ class StatsViewModel(private val c: AppContainer) : ViewModel() {
     fun reload() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true, failed = false) }
-            runCatching {
+            runCatchingCancellable {
                 withContext(Dispatchers.IO) {
                     val all = c.statistics.allTransactions()
                     val today = LocalDay.of(c.clock.nowMillis())

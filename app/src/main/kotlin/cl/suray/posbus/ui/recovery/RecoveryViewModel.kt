@@ -7,6 +7,7 @@ import cl.suray.posbus.AppContainer
 import cl.suray.posbus.domain.PdfFileInfo
 import cl.suray.posbus.domain.RecoveryStats
 import cl.suray.posbus.domain.ReportFiles
+import cl.suray.posbus.domain.runCatchingCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,7 +56,7 @@ class RecoveryViewModel(private val c: AppContainer) : ViewModel() {
         if (_state.value.printing) return
         viewModelScope.launch {
             _state.update { it.copy(printing = true) }
-            runCatching { c.pdfPrinter.printPdf(java.io.File(c.pdfDir, file.name), file.name.removeSuffix(".pdf")) }
+            runCatchingCancellable { c.pdfPrinter.printPdf(java.io.File(c.pdfDir, file.name), file.name.removeSuffix(".pdf")) }
                 .onSuccess { _messages.tryEmit("Documento enviado a impresora") }
                 .onFailure { _messages.tryEmit("Error al imprimir el PDF: ${it.message}") }
             _state.update { it.copy(printing = false) }

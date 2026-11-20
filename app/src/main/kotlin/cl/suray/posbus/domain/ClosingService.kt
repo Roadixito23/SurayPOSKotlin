@@ -6,6 +6,14 @@ import cl.suray.posbus.data.db.DailyClosing
 import cl.suray.posbus.data.prefs.OpenTransaction
 import java.util.TimeZone
 
+/** Resultado del cierre automático al cambiar de día. */
+sealed interface AutoCloseResult {
+    /** Mismo día, sin fecha previa o caja vacía: no había nada que cerrar. */
+    data object NotNeeded : AutoCloseResult
+    data object Closed : AutoCloseResult
+    data class Failed(val cause: Throwable) : AutoCloseResult
+}
+
 /** Cierre automático al cambiar de día y fusión de cierres del mismo día (`AutoClosingService` + `MergeService`). */
 class ClosingService(
     private val db: AppDatabase,
@@ -16,19 +24,22 @@ class ClosingService(
 ) : ManualClosingSaver {
     private fun todayIso() = LocalDay.of(clock.nowMillis(), timeZone).iso()
 
-    /** @return true si se cerró la caja del día anterior. */
-    suspend fun checkAndAutoClose(): Boolean {
+    suspend fun checkAndAutoClose(): AutoCloseResult {
         val today = todayIso()
         val last = lastDate.lastTransactionDate
-        if (last == null || last == today) return false
+        if (last == null || last == today) return AutoCloseResult.NotNeeded
 
         if (!register.hasActive()) {
             lastDate.lastTransactionDate = today
-            return false
+            return AutoCloseResult.NotNeeded
         }
-        val closed = runCatching { performAutoClose(last) }.getOrDefault(false)
-        if (closed) lastDate.lastTransactionDate = today
-        return closed
+        return runCatchingCancellable { performAutoClose(last) }.fold(
+            onSuccess = {
+                lastDate.lastTransactionDate = today
+                AutoCloseResult.Closed
+            },
+            onFailure = { AutoCloseResult.Failed(it) },
+        )
     }
 
     fun updateLastTransactionDate() {
@@ -40,17 +51,15 @@ class ClosingService(
         return last != null && last != todayIso() && register.hasActive()
     }
 
-    private suspend fun performAutoClose(closingDate: String): Boolean {
+    private suspend fun performAutoClose(closingDate: String) {
         val transactions = register.ordered()
-        if (transactions.isEmpty()) return false
-        val day = LocalDay.parse(closingDate) ?: return false
+        val day = LocalDay.parse(closingDate) ?: throw IllegalStateException("Fecha inválida: $closingDate")
 
         val existing = db.dailyClosingDao().getByDate(closingDate)
         if (existing != null) merge(existing, transactions)
         else createNew(transactions, day, ClosingTotals.forAutoClose(transactions))
 
         register.clear()
-        return true
     }
 
     private suspend fun createNew(

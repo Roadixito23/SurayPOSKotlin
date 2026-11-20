@@ -12,11 +12,13 @@ import cl.suray.posbus.domain.CargoCopy
 import cl.suray.posbus.domain.OFFER_NAME
 import cl.suray.posbus.domain.Offers
 import cl.suray.posbus.data.prefs.Tarifa
+import cl.suray.posbus.domain.AutoCloseResult
 import cl.suray.posbus.domain.CANCELLATION_PREFIX
 import cl.suray.posbus.domain.DAYS_ES_UPPER
 import cl.suray.posbus.domain.DateParts
 import cl.suray.posbus.domain.LocalDay
 import cl.suray.posbus.domain.SumUpConfig
+import cl.suray.posbus.domain.runCatchingCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -213,35 +215,49 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         print: suspend (LastTransaction) -> Unit,
     ) {
         if (busy.value) return
+        // busy se activa antes de cualquier suspensión: el cierre automático suspende en Room y
+        // un segundo toque en esa ventana generaría una segunda venta.
+        busy.value = true
         viewModelScope.launch {
-            if (c.closing.checkAndAutoClose()) {
-                _messages.tryEmit(UiMessage("Se cerró la caja del día anterior automáticamente"))
-            }
-            if (c.pending.hasPreviousDayTransactions()) {
-                _pendingAlert.tryEmit(c.pending.pendingDays())
-                return@launch
-            }
-            busy.value = true
-            hasReprinted.value = false
-            hasCancelled.value = false
-            _messages.tryEmit(UiMessage(announce))
+            try {
+                when (c.closing.checkAndAutoClose()) {
+                    AutoCloseResult.Closed ->
+                        _messages.tryEmit(UiMessage("Se cerró la caja del día anterior automáticamente"))
+                    is AutoCloseResult.Failed -> {
+                        val date = c.prefs.lastTransactionDate?.let(LocalDay::parse)?.let {
+                            "%02d/%02d/%04d".format(it.day, it.month, it.year)
+                        } ?: "día anterior"
+                        _messages.tryEmit(
+                            UiMessage("No se pudo cerrar la caja del $date. Ciérrela manualmente desde el menú.", MessageKind.Error),
+                        )
+                    }
+                    AutoCloseResult.NotNeeded -> Unit
+                }
+                if (c.pending.hasPreviousDayTransactions()) {
+                    _pendingAlert.tryEmit(c.pending.pendingDays())
+                    return@launch
+                }
+                hasReprinted.value = false
+                hasCancelled.value = false
+                _messages.tryEmit(UiMessage(announce))
 
-            // El comprobante se incrementa antes de escribir en la caja, como en Flutter.
-            c.comprobante.increment()
-            val last = runCatching { record(c.comprobante.formatted) }.getOrElse {
-                _messages.tryEmit(UiMessage("Error al guardar venta. Contacte soporte.", MessageKind.Error))
+                // El comprobante se incrementa antes de escribir en la caja, como en Flutter.
+                c.comprobante.increment()
+                val last = runCatchingCancellable { record(c.comprobante.formatted) }.getOrElse {
+                    _messages.tryEmit(UiMessage("Error al guardar venta. Contacte soporte.", MessageKind.Error))
+                    return@launch
+                }
+                c.closing.updateLastTransactionDate()
+                c.prefs.lastTransaction = last
+                lastTransaction.value = last
+
+                // La impresión es independiente: un fallo no revierte la venta.
+                runCatchingCancellable { print(last) }
+                    .onSuccess { _messages.tryEmit(UiMessage(doneText, MessageKind.Success)) }
+                    .onFailure { _messages.tryEmit(UiMessage(failText, MessageKind.Warning)) }
+            } finally {
                 busy.value = false
-                return@launch
             }
-            c.closing.updateLastTransactionDate()
-            c.prefs.lastTransaction = last
-            lastTransaction.value = last
-
-            // La impresión es independiente: un fallo no revierte la venta.
-            runCatching { print(last) }
-                .onSuccess { _messages.tryEmit(UiMessage(doneText, MessageKind.Success)) }
-                .onFailure { _messages.tryEmit(UiMessage(failText, MessageKind.Warning)) }
-            busy.value = false
         }
     }
 
@@ -288,7 +304,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         }
         viewModelScope.launch {
             busy.value = true
-            runCatching {
+            runCatchingCancellable {
                 when {
                     cargo != null -> c.printer.printCargo(cargo, last.comprobante, copies, reprint = true)
                     last.isOffer -> c.printer.printOffer(offer.orEmpty(), last.comprobante, reprint = true)
