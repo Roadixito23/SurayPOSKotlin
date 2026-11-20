@@ -53,6 +53,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         c.settingsRevision.update { it + 1 }
     }
 
+    fun verifyAppPassword(input: String) = c.passwords.verifyLogin(input)
     fun verifySettingsPassword(input: String) = c.passwords.verifySettings(input)
     fun verifyComprobantePassword(input: String) = c.passwords.verifyComprobante(input)
 

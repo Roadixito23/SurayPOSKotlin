@@ -1,5 +1,17 @@
 package cl.suray.posbus.ui.settings
 
+import cl.suray.posbus.ui.components.rememberAutoFocus
+import cl.suray.posbus.ui.components.surayFieldColors
+import cl.suray.posbus.ui.components.SurayFieldShape
+import cl.suray.posbus.ui.components.SurayDialogCard
+import cl.suray.posbus.ui.components.NumberInputDialog
+import cl.suray.posbus.ui.components.ChangePasswordDialog
+import cl.suray.posbus.ui.components.PasswordPromptDialog
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -99,7 +111,7 @@ private fun SettingsTab.painter() = when (this) {
 fun SettingsScreen(vm: SettingsViewModel, printerVm: PrinterDiagViewModel, onBack: () -> Unit, onButtonColors: () -> Unit = {}) {
     var unlocked by remember { mutableStateOf(false) }
     if (!unlocked) {
-        PasswordDialog(
+        PasswordPromptDialog(
             title = "Configuración",
             verify = vm::verifySettingsPassword,
             onSuccess = { unlocked = true },
@@ -174,42 +186,47 @@ private fun Section(title: String, icon: Painter, subtitle: String? = null, cont
 
 @Composable
 private fun TerminalTab(state: SettingsUiState, vm: SettingsViewModel, report: (Rejection, String) -> Unit) {
-    var terminal by remember(state.terminalId) { mutableStateOf(state.terminalId.toString()) }
     var confirmReset by remember { mutableStateOf(false) }
     var askReset by remember { mutableStateOf(false) }
+    var editTerminal by remember { mutableStateOf(false) }
 
     Section("ID de terminal", painterResource(R.drawable.ic_bus), "Identificador de este dispositivo (1-99)") {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                terminal, { terminal = it.filter(Char::isDigit).take(2) },
-                Modifier.width(120.dp), singleLine = true, shape = RoundedCornerShape(12.dp),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
-            Spacer(Modifier.width(12.dp))
-            Button({ report(vm.saveTerminalId(terminal), "ID guardado: $terminal") }) { Text("Guardar") }
+            Text("Terminal ${state.terminalId}", Modifier.weight(1f), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Button({ editTerminal = true }) { Text("Cambiar") }
         }
     }
+    if (editTerminal) NumberInputDialog(
+        title = "ID de terminal",
+        label = "ID (1-99)",
+        initial = state.terminalId.toString(),
+        maxLength = 2,
+        icon = painterResource(R.drawable.ic_bus),
+        onSave = { text ->
+            vm.saveTerminalId(text).also { if (it == null) { editTerminal = false; report(null, "ID guardado: ${text.trim()}") } }
+        },
+        onCancel = { editTerminal = false },
+    )
 
     Section("N° Comprobante", painterResource(R.drawable.ic_receipt), "Último usado: ${state.comprobanteNumber}") {
         Text("Reinicia el contador de comprobantes. Requiere la clave del comprobante.", fontSize = 14.sp)
         Button({ askReset = true }) { Text("Reiniciar contador") }
     }
 
-    if (askReset) PasswordDialog(
+    if (askReset) PasswordPromptDialog(
         title = "Clave del comprobante",
         verify = vm::verifyComprobantePassword,
         onSuccess = { askReset = false; confirmReset = true },
         onCancel = { askReset = false },
     )
-    if (confirmReset) AlertDialog(
-        onDismissRequest = { confirmReset = false },
-        title = { Text("Confirmar reinicio") },
-        text = { Text("¿Reiniciar el contador de comprobantes?") },
-        confirmButton = {
-            TextButton({ vm.resetComprobanteCounter(); confirmReset = false; report(null, "Contador reiniciado") }) { Text("Reiniciar") }
-        },
-        dismissButton = { TextButton({ confirmReset = false }) { Text("Cancelar") } },
-    )
+    if (confirmReset) SurayDialogCard(
+        title = "Confirmar reinicio",
+        onDismiss = { confirmReset = false },
+        confirmText = "Reiniciar",
+        onConfirm = { vm.resetComprobanteCounter(); confirmReset = false; report(null, "Contador reiniciado") },
+        icon = rememberVectorPainter(Icons.Default.Warning),
+        withKeyboard = false,
+    ) { Text("¿Reiniciar el contador de comprobantes?", fontSize = 16.sp, textAlign = TextAlign.Center) }
 }
 
 @Composable
@@ -235,17 +252,21 @@ private fun SecurityTab(state: SettingsUiState, vm: SettingsViewModel, report: (
 
     passwordDialog?.let { kind ->
         ChangePasswordDialog(
-            kind,
-            onConfirm = { new ->
-                val r = when (kind) {
+            label = kind.label,
+            verifyCurrent = when (kind) {
+                PasswordKind.App -> vm::verifyAppPassword
+                PasswordKind.Settings -> vm::verifySettingsPassword
+                PasswordKind.Comprobante -> vm::verifyComprobantePassword
+            },
+            exactLength = kind == PasswordKind.Comprobante,
+            onSave = { new ->
+                when (kind) {
                     PasswordKind.App -> vm.changeAppPassword(new)
                     PasswordKind.Settings -> vm.changeSettingsPassword(new)
                     PasswordKind.Comprobante -> vm.changeComprobantePassword(new)
-                }
-                if (r == null) passwordDialog = null
-                report(r, "Clave actualizada")
+                }.also { if (it == null) { passwordDialog = null; report(null, "Clave actualizada") } }
             },
-            onDismiss = { passwordDialog = null },
+            onCancel = { passwordDialog = null },
         )
     }
 }
@@ -300,27 +321,35 @@ private fun PricesTab(state: SettingsUiState, vm: SettingsViewModel, report: (Re
     editing?.let { (sunday, index, t) ->
         var name by remember { mutableStateOf(t.nombre) }
         var price by remember { mutableStateOf(t.precio.toLong().toString()) }
-        AlertDialog(
-            onDismissRequest = { editing = null },
-            title = { Text("Editar tarifa") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(name, { name = it }, label = { Text("Nombre") }, singleLine = true)
-                    OutlinedTextField(
-                        price, { price = it.filter(Char::isDigit) }, label = { Text("Precio (CLP)") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton({
-                    val r = vm.saveFare(sunday, index, name, price)
-                    if (r == null) editing = null
-                    report(r, "Tarifa guardada")
-                }) { Text("Guardar") }
-            },
-            dismissButton = { TextButton({ editing = null }) { Text("Cancelar") } },
-        )
+        var error by remember { mutableStateOf<String?>(null) }
+        val focus = rememberAutoFocus()
+        fun save() {
+            error = vm.saveFare(sunday, index, name, price)
+            if (error == null) { editing = null; report(null, "Tarifa guardada") }
+        }
+        SurayDialogCard(
+            title = "Editar tarifa",
+            onDismiss = { editing = null },
+            confirmText = "Guardar",
+            onConfirm = ::save,
+            icon = painterResource(R.drawable.ic_money),
+            error = error,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    name, { name = it; error = null }, Modifier.fillMaxWidth().focusRequester(focus),
+                    label = { Text("Nombre") }, singleLine = true, shape = SurayFieldShape, colors = surayFieldColors(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                )
+                OutlinedTextField(
+                    price, { price = it.filter(Char::isDigit); error = null }, Modifier.fillMaxWidth(),
+                    label = { Text("Precio (CLP)") }, singleLine = true, shape = SurayFieldShape, colors = surayFieldColors(),
+                    isError = error != null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { save() }),
+                )
+            }
+        }
     }
     restore?.let { sunday ->
         AlertDialog(
@@ -382,42 +411,4 @@ private fun AbbreviationsTab(state: SettingsUiState, vm: SettingsViewModel) {
         Spacer(Modifier.height(4.dp))
         Button({ vm.saveAbbreviations(edited) }) { Text("Guardar") }
     }
-}
-
-@Composable
-private fun PasswordDialog(title: String, verify: (String) -> Boolean, onSuccess: () -> Unit, onCancel: () -> Unit) {
-    var input by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text(title) },
-        text = {
-            OutlinedTextField(
-                input, { input = it.take(12); error = false }, singleLine = true, isError = error,
-                label = { Text(if (error) "Clave incorrecta" else "Clave") },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-            )
-        },
-        confirmButton = { TextButton({ if (verify(input)) onSuccess() else { error = true; input = "" } }) { Text("Aceptar") } },
-        dismissButton = { TextButton(onCancel) { Text("Cancelar") } },
-    )
-}
-
-@Composable
-private fun ChangePasswordDialog(kind: PasswordKind, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var new by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Cambiar ${kind.label}") },
-        text = {
-            OutlinedTextField(
-                new, { new = it.take(12) }, singleLine = true, label = { Text("Nueva clave (6 dígitos)") },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-            )
-        },
-        confirmButton = { TextButton({ onConfirm(new) }) { Text("Guardar") } },
-        dismissButton = { TextButton(onDismiss) { Text("Cancelar") } },
-    )
 }
