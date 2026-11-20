@@ -16,6 +16,7 @@ import cl.suray.posbus.domain.CANCELLATION_PREFIX
 import cl.suray.posbus.domain.DAYS_ES_UPPER
 import cl.suray.posbus.domain.DateParts
 import cl.suray.posbus.domain.FareKind
+import cl.suray.posbus.domain.faresFor
 import cl.suray.posbus.domain.LocalDay
 import cl.suray.posbus.domain.SumUpConfig
 import cl.suray.posbus.domain.cancellableLast
@@ -29,6 +30,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -40,6 +43,8 @@ data class HomeUiState(
     val dayName: String = "",
     val dateText: String = "",
     val nextComprobante: Int = 1,
+    /** Tarifa única toda la semana: no hay interruptor L-S / D-F ni detección de feriados. */
+    val unifiedFare: Boolean = true,
     val sundayRate: Boolean = false,
     val autoRate: Boolean = false,
     val holidayReason: String? = null,
@@ -101,13 +106,17 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         val cancelled = flags[2] as Boolean
         val last = flags[3] as LastTransaction?
         val isCargo = last?.nombre?.lowercase()?.contains("cargo") == true
+        val unified = c.prefs.unifiedFare
+        val kind = FareKind.of(unified, sunday)
         s.copy(
-            sundayRate = sunday,
-            autoRate = auto,
-            holidayReason = reason,
+            unifiedFare = unified,
+            // Con tarifa única el interruptor, el ⚡ y el aviso de feriado no existen: todo se cobra como lunes a sábado.
+            sundayRate = kind == FareKind.SUNDAY,
+            autoRate = auto && !unified,
+            holidayReason = if (unified) null else reason,
             canCancel = s.canCancel && !cancelled,
             canReprint = last != null && (isCargo || !reprinted),
-            fares = if (sunday) c.prefs.sundayFares else c.prefs.weekdayFares,
+            fares = faresFor(kind, c.prefs.weekdayFares, c.prefs.sundayFares),
             busy = isBusy,
             lastIsCargo = isCargo,
             cardAvailable = SumUpConfig.isReady(c.prefs.sumUpEnabled, c.prefs.sumUpAffiliateKey),
@@ -124,7 +133,10 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                 delay(1_000)
             }
         }
-        viewModelScope.launch { detectRate() }
+        // Los feriados solo importan en el modo diferenciado: se consulta al abrir y cada vez que se apaga la tarifa única.
+        viewModelScope.launch {
+            c.settingsRevision.map { c.prefs.unifiedFare }.distinctUntilChanged().collect { detectRate() }
+        }
         viewModelScope.launch {
             c.pending.startPeriodicCheck(viewModelScope) {
                 c.pending.markAlertShown()
@@ -139,6 +151,12 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
 
     /** Domingo o feriado activa la tarifa especial; el usuario puede cambiarla a mano después. */
     private suspend fun detectRate() {
+        if (c.prefs.unifiedFare) {
+            sundayRate.value = false
+            autoRate.value = false
+            holidayReason.value = null
+            return
+        }
         val result = withContext(Dispatchers.IO) { runCatching { c.holidays.checkToday() }.getOrNull() } ?: return
         sundayRate.value = result.isSpecial
         autoRate.value = result.isSpecial

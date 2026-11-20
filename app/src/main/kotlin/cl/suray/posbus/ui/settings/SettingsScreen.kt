@@ -315,8 +315,16 @@ private fun PricesTab(state: SettingsUiState, vm: SettingsViewModel, report: (Re
         }
         TextButton({ restore = sunday }) { Text("Restaurar valores por defecto") }
     }
-    fares("Lunes a sábado", false, state.weekdayFares)
-    fares("Domingo y feriados", true, state.sundayFares)
+    Section("Tarifa única toda la semana", painterResource(R.drawable.ic_money), "Se cobran los precios de lunes a sábado todos los días") {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(if (state.unifiedFare) "Activada" else "Desactivada", Modifier.weight(1f))
+            Switch(state.unifiedFare, vm::setUnifiedFare)
+        }
+        if (!state.unifiedFare) Text("Se usan precios distintos los domingos y feriados, con detección automática.", fontSize = 12.sp, color = Color(0xFF6B7C8C))
+    }
+    // Con tarifa única solo hay una lista; los precios de domingo se conservan y reaparecen al desactivarla.
+    fares(if (state.unifiedFare) "Precios (toda la semana)" else "Lunes a sábado", false, state.weekdayFares)
+    if (!state.unifiedFare) fares("Domingo y feriados", true, state.sundayFares)
 
     editing?.let { (sunday, index, t) ->
         var name by remember { mutableStateOf(t.nombre) }

@@ -68,7 +68,8 @@ class ButtonColorsViewModel(private val c: AppContainer) : ViewModel() {
             return ColorItem(kind, i, label, saved ?: ButtonColorDefaults.spec(kind, i), saved != null)
         }
         val week = c.prefs.weekdayFares.mapIndexed { i, t -> item(ButtonKind.Weekday, i, t.nombre) }
-        val sun = c.prefs.sundayFares.mapIndexed { i, t -> item(ButtonKind.Sunday, i, t.nombre) }
+        // Con tarifa única los botones de domingo no se usan: se ocultan, pero sus colores se conservan.
+        val sun = if (c.prefs.unifiedFare) emptyList() else c.prefs.sundayFares.mapIndexed { i, t -> item(ButtonKind.Sunday, i, t.nombre) }
         return week + sun + listOf(item(ButtonKind.Otros, 0, "Oferta"), item(ButtonKind.Otros, 1, "Cargo"))
     }
 
@@ -107,12 +108,13 @@ fun ButtonColorsScreen(vm: ButtonColorsViewModel, onBack: () -> Unit) {
         )
     }) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)) {
+            val unified = items.none { it.kind == ButtonKind.Sunday }
             val groups = listOf(
-                ButtonKind.Weekday to "Lunes a sábado",
+                ButtonKind.Weekday to if (unified) "Tarifas" else "Lunes a sábado",
                 ButtonKind.Sunday to "Domingo y feriados",
                 ButtonKind.Otros to "Otros",
             )
-            groups.forEach { (kind, title) ->
+            groups.filter { (kind, _) -> !(unified && kind == ButtonKind.Sunday) }.forEach { (kind, title) ->
                 item { Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)) }
                 items(items.filter { it.kind == kind }, key = { "${it.kind}_${it.index}" }) { it ->
                     Row(Modifier.fillMaxWidth().clickable { editing = it }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {

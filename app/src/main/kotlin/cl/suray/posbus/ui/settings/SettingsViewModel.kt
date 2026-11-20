@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.update
 data class SettingsUiState(
     val weekdayFares: List<Tarifa> = emptyList(),
     val sundayFares: List<Tarifa> = emptyList(),
+    val unifiedFare: Boolean = true,
     val terminalId: Int = 1,
     val comprobanteNumber: Int = 0,
     val sumUpEnabled: Boolean = true,
@@ -35,6 +36,7 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     private fun load() = SettingsUiState(
         weekdayFares = c.prefs.weekdayFares,
         sundayFares = c.prefs.sundayFares,
+        unifiedFare = c.prefs.unifiedFare,
         terminalId = c.prefs.ticketId,
         comprobanteNumber = c.prefs.comprobanteNumber,
         sumUpEnabled = c.prefs.sumUpEnabled,
@@ -58,6 +60,12 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun verifyComprobantePassword(input: String) = c.passwords.verifyComprobante(input)
 
     // --- Tarifas ---
+
+    /** Activa o apaga la tarifa única; los precios y colores de domingo no se borran, solo se ocultan. */
+    fun setUnifiedFare(value: Boolean) {
+        c.prefs.unifiedFare = value
+        changed()
+    }
 
     fun saveFare(sunday: Boolean, index: Int, name: String, price: String): Rejection {
         val n = SettingsInput.fareName(name) ?: return "El nombre no puede estar vacío"

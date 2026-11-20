@@ -295,7 +295,8 @@ private fun PendingBanner(onClose: () -> Unit) {
 private fun StatusBand(state: HomeUiState, onRate: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 10.dp, vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         TransactionCounter(state.salesToday, state.cancellationsToday)
-        Row(
+        // Con tarifa única no hay interruptor L-S / D/F: solo queda el contador de ventas.
+        if (!state.unifiedFare) Row(
             Modifier
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color.Black.copy(alpha = 0.55f))
