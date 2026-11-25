@@ -20,6 +20,12 @@ import kotlinx.serialization.json.Json
  * para poder importar sus preferencias tal cual.
  *
  * Las claves de seguridad se guardan en texto plano (mismo formato que Flutter); ver `domain/Security.kt`.
+ *
+ * Escritura síncrona: los datos de caja (transacciones abiertas, `openNextId`, `comprobanteNumber`,
+ * `ticketId`, última venta y `lastTransactionDate`) se guardan con `commit()`, no con `apply()`:
+ * `apply()` escribe a disco en segundo plano y un corte de energía justo después de una venta
+ * podría perderla o desincronizar el correlativo. Son escrituras pequeñas y poco frecuentes, así
+ * que bloquear unos milisegundos es aceptable. El resto de preferencias sigue con `apply()`.
  */
 class AppPrefs(private val sp: SharedPreferences) :
     OpenRegisterStore, LastDateStore, ComprobanteStore, HolidayStore, SecurityStore, CardPaymentStore, BackupPrefs {
@@ -34,15 +40,15 @@ class AppPrefs(private val sp: SharedPreferences) :
 
     override var openTransactions: List<OpenTransaction>
         get() = decodeList(KEY_OPEN_TRANSACTIONS, OpenTransaction.serializer(), emptyList())
-        set(value) = encodeList(KEY_OPEN_TRANSACTIONS, OpenTransaction.serializer(), value)
+        set(value) = encodeList(KEY_OPEN_TRANSACTIONS, OpenTransaction.serializer(), value, durable = true)
 
     override var openNextId: Int
         get() = sp.getInt(KEY_OPEN_NEXT_ID, 1)
-        set(value) = sp.edit().putInt(KEY_OPEN_NEXT_ID, value).apply()
+        set(value) = sp.edit().putInt(KEY_OPEN_NEXT_ID, value).save(durable = true)
 
     override var lastTransactionDate: String?
         get() = sp.getString(KEY_LAST_TRANSACTION_DATE, null)
-        set(value) = sp.edit().putString(KEY_LAST_TRANSACTION_DATE, value).apply()
+        set(value) = sp.edit().putString(KEY_LAST_TRANSACTION_DATE, value).save(durable = true)
 
     // --- Tarifas ------------------------------------------------------------------------------
 
@@ -58,11 +64,11 @@ class AppPrefs(private val sp: SharedPreferences) :
 
     override var comprobanteNumber: Int
         get() = sp.getInt(KEY_COMPROBANTE_NUMBER, 0)
-        set(value) = sp.edit().putInt(KEY_COMPROBANTE_NUMBER, value).apply()
+        set(value) = sp.edit().putInt(KEY_COMPROBANTE_NUMBER, value).save(durable = true)
 
     override var ticketId: Int
         get() = sp.getInt(KEY_TICKET_ID, 1)
-        set(value) = sp.edit().putInt(KEY_TICKET_ID, value).apply()
+        set(value) = sp.edit().putInt(KEY_TICKET_ID, value).save(durable = true)
 
     // --- Feriados -----------------------------------------------------------------------------
 
@@ -116,6 +122,7 @@ class AppPrefs(private val sp: SharedPreferences) :
         set(value) = putOrRemove(
             KEY_LAST_TRANSACTION,
             value?.let { json.encodeToString(LastTransaction.serializer(), it) },
+            durable = true,
         )
 
     // --- Colores de botones (`button_colors_{weekday|sunday|otros}_N`) -------------------------
@@ -198,8 +205,13 @@ class AppPrefs(private val sp: SharedPreferences) :
 
     // --- Utilidades ---------------------------------------------------------------------------
 
-    private fun putOrRemove(key: String, value: String?) {
-        sp.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply()
+    /** [durable] = true escribe con `commit()` (ver "Escritura síncrona" en el KDoc de la clase). */
+    private fun putOrRemove(key: String, value: String?, durable: Boolean = false) {
+        sp.edit().apply { if (value == null) remove(key) else putString(key, value) }.save(durable)
+    }
+
+    private fun SharedPreferences.Editor.save(durable: Boolean) {
+        if (durable) commit() else apply()
     }
 
     private fun <T> decodeList(
@@ -211,8 +223,13 @@ class AppPrefs(private val sp: SharedPreferences) :
         return runCatching { json.decodeFromString(ListSerializer(serializer), raw) }.getOrDefault(default)
     }
 
-    private fun <T> encodeList(key: String, serializer: kotlinx.serialization.KSerializer<T>, value: List<T>) {
-        sp.edit().putString(key, json.encodeToString(ListSerializer(serializer), value)).apply()
+    private fun <T> encodeList(
+        key: String,
+        serializer: kotlinx.serialization.KSerializer<T>,
+        value: List<T>,
+        durable: Boolean = false,
+    ) {
+        sp.edit().putString(key, json.encodeToString(ListSerializer(serializer), value)).save(durable)
     }
 
     companion object {

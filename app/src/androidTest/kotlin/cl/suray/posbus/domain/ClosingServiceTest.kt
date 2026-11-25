@@ -118,6 +118,60 @@ class ClosingServiceTest {
     }
 
     @Test
+    fun mergingTheSameTransactionsTwiceDoesNotDuplicate() = runBlocking {
+        val day = LocalDay(2026, 10, 20)
+        val lines = listOf(
+            line(1, "Público General", 3600.0), line(2, "Cargo: Caja", 2500.0), line(3, "Anulación: Público General", -3600.0),
+        )
+        val s = service(CashRegister(store, clock, utc))
+        val created = s.saveManualClosing(lines, day)
+
+        // Simula que el proceso murió tras guardar en Room y antes de vaciar la caja: se reintenta igual.
+        val again = s.merge(created, lines)
+        val twice = s.saveManualClosing(lines, day)
+
+        assertEquals(created, again)
+        assertEquals(created, twice)
+        assertEquals(1, db.dailyClosingDao().getAll().size)
+        val stored = db.dailyClosingDao().getById(created.id)!!
+        assertEquals(created, stored)
+        assertEquals(3, stored.transactionCount)
+        assertEquals(3, db.transactionDao().count(created.id))
+        assertEquals(3600.0, stored.totalPasajes, 0.0)
+        assertEquals(2500.0, stored.totalCorrespondencias, 0.0)
+        assertEquals(-3600.0, stored.totalAnulaciones, 0.0)
+        assertEquals(2500.0, stored.grandTotal, 0.0)
+
+        // Una venta nueva junto a las repetidas sí se agrega, una sola vez.
+        val extra = line(4, "Adulto Mayor", 1800.0)
+        val merged = s.merge(stored, lines + extra)
+        assertEquals(4, merged.transactionCount)
+        assertEquals(4, db.transactionDao().count(created.id))
+        assertEquals(5400.0, merged.totalPasajes, 0.0)
+        assertEquals(4300.0, merged.grandTotal, 0.0)
+    }
+
+    @Test
+    fun autoCloseRetriedAfterCrashDoesNotDuplicate() = runBlocking {
+        val lines = listOf(line(1, "Público General", 3600.0), line(2, "Cargo: Caja", 2500.0))
+        store.openTransactions = lines
+        store.openNextId = 3
+        store.lastTransactionDate = "2026-10-20"
+        assertTrue(service(CashRegister(store, clock, utc)).checkAndAutoClose())
+
+        // La caja no llegó a vaciarse: al reiniciar vuelven las mismas ventas y la fecha anterior.
+        store.openTransactions = lines
+        store.openNextId = 3
+        store.lastTransactionDate = "2026-10-20"
+        assertTrue(service(CashRegister(store, clock, utc)).checkAndAutoClose())
+
+        val closing = db.dailyClosingDao().getByDate("2026-10-20")!!
+        assertEquals(2, closing.transactionCount)
+        assertEquals(2, db.transactionDao().count(closing.id))
+        assertEquals(6100.0, closing.grandTotal, 0.0)
+    }
+
+    @Test
     fun statisticsRepositoryJoinsClosedAndOpen() = runBlocking {
         store.lastTransactionDate = "2026-10-20"
         store.openTransactions = listOf(line(1, "A", 100.0))

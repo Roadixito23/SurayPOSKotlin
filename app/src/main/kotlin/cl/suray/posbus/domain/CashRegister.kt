@@ -36,9 +36,16 @@ class CashRegister(
 
     fun addOffer(total: Double, comprobante: String) = add(OFFER_NAME, total, comprobante)
 
-    /** Anula la última venta que no sea ya una anulación, con el valor negado. */
+    /** Se puede anular la última venta (regla de [cancellableLast] sobre lo guardado). */
+    fun canCancelLast(): Boolean = cancellableLast(transactions) != null
+
+    /**
+     * Anula la última venta (por `id`) con el valor negado. Devuelve false si no hay venta
+     * o si ya se anuló (hay una anulación posterior); así no se anula dos veces aunque se
+     * reinicie la app.
+     */
     fun cancelLast(): Boolean {
-        val last = transactions.lastOrNull { !it.nombre.startsWith(CANCELLATION_PREFIX) } ?: return false
+        val last = cancellableLast(transactions) ?: return false
         add("$CANCELLATION_PREFIX ${last.nombre}", -last.valor, last.comprobante)
         return true
     }
@@ -108,4 +115,17 @@ class CashRegister(
         store.openNextId = nextId
         _changes.value = transactions.toList()
     }
+}
+
+/**
+ * Venta anulable de [transactions]: la última que no es anulación (por `id`), siempre que no
+ * exista ninguna anulación con `id` mayor. No se compara por comprobante porque al anular el
+ * contador retrocede y la venta siguiente reutiliza el número. Null si no hay nada que anular.
+ */
+fun cancellableLast(transactions: List<OpenTransaction>): OpenTransaction? {
+    val last = transactions
+        .filterNot { it.nombre.startsWith(CANCELLATION_PREFIX) }
+        .maxByOrNull { it.id } ?: return null
+    val cancelledAfter = transactions.any { it.nombre.startsWith(CANCELLATION_PREFIX) && it.id > last.id }
+    return if (cancelledAfter) null else last
 }

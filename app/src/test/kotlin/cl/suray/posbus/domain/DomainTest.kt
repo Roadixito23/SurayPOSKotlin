@@ -103,17 +103,57 @@ class CashRegisterTest {
         assertEquals(0.0, r.total(), 0.0)
     }
 
-    @Test fun cancelLastSkipsExistingCancellations() {
+    @Test fun cancelLastTwiceOnlyCancelsOnce() {
         val r = register()
         r.receiveData("A", 100.0, "c1")
         r.receiveData("B", 200.0, "c2")
-        r.cancelLast() // anula B
-        r.cancelLast() // la última NO anulación sigue siendo B
-        assertEquals(listOf("A", "B", "Anulación: B", "Anulación: B"), r.all.map { it.nombre })
+        assertTrue(r.canCancelLast())
+        assertTrue(r.cancelLast()) // anula B
+        assertFalse(r.canCancelLast())
+        assertFalse(r.cancelLast()) // B ya está anulada; A no se toca
+        assertEquals(listOf("A", "B", "Anulación: B"), r.all.map { it.nombre })
+        assertEquals(1, r.all.count { it.nombre.startsWith(CANCELLATION_PREFIX) })
+        assertEquals(100.0, r.total(), 0.0)
+    }
+
+    @Test fun cancelStaysBlockedAfterRestart() {
+        val store = FakeRegisterStore()
+        val r = register(store)
+        r.receiveData("A", 100.0, "01-000001")
+        assertTrue(r.cancelLast())
+        // Reinicio: nueva instancia desde lo persistido (hasCancelled en memoria se pierde).
+        val again = register(store)
+        assertFalse(again.canCancelLast())
+        assertFalse(again.cancelLast())
+        assertEquals(listOf("A", "Anulación: A"), again.all.map { it.nombre })
+    }
+
+    @Test fun newSaleAfterCancelIsCancellableEvenReusingComprobante() {
+        val r = register()
+        r.receiveData("A", 100.0, "01-000001")
+        assertTrue(r.cancelLast())
+        // El contador retrocedió: la venta siguiente reutiliza el mismo comprobante.
+        r.receiveData("B", 200.0, "01-000001")
+        assertTrue(r.canCancelLast())
+        assertTrue(r.cancelLast())
+        assertEquals(listOf("A", "Anulación: A", "B", "Anulación: B"), r.all.map { it.nombre })
+        assertFalse(r.canCancelLast())
+    }
+
+    @Test fun cancellableLastUsesIdsNotListOrder() {
+        // Lista desordenada (como tras cargar): la última venta por id es 5 y la anulación 4 es anterior.
+        val list = listOf(tx(5, "B", 200.0), tx(1, "A", 100.0), tx(4, "Anulación: A", -100.0))
+        assertEquals(5, cancellableLast(list)?.id)
+        assertNull(cancellableLast(list + tx(6, "Anulación: B", -200.0)))
+        assertNull(cancellableLast(listOf(tx(1, "Anulación: X", -1.0))))
+        assertNull(cancellableLast(emptyList()))
     }
 
     @Test fun cancelOnEmptyDoesNothing() {
-        assertFalse(register().cancelLast())
+        val r = register()
+        assertFalse(r.canCancelLast())
+        assertFalse(r.cancelLast())
+        assertTrue(r.all.isEmpty())
     }
 
     @Test fun clearResetsNextId() {

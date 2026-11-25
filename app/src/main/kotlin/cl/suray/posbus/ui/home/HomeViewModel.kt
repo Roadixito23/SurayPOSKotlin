@@ -17,6 +17,7 @@ import cl.suray.posbus.domain.DAYS_ES_UPPER
 import cl.suray.posbus.domain.DateParts
 import cl.suray.posbus.domain.LocalDay
 import cl.suray.posbus.domain.SumUpConfig
+import cl.suray.posbus.domain.cancellableLast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -87,7 +88,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             pendingDays = pending,
             salesToday = todays.count { !it.nombre.startsWith(CANCELLATION_PREFIX) },
             cancellationsToday = todays.count { it.nombre.startsWith(CANCELLATION_PREFIX) },
-            canCancel = open.isNotEmpty(),
+            canCancel = cancellableLast(open) != null,
         )
     }
 
@@ -213,35 +214,39 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         print: suspend (LastTransaction) -> Unit,
     ) {
         if (busy.value) return
+        // Se marca ocupado antes de lanzar: checkAndAutoClose() puede suspender y un segundo toque
+        // pasaría el chequeo de arriba (venta duplicada). El finally lo libera en toda salida.
+        busy.value = true
         viewModelScope.launch {
-            if (c.closing.checkAndAutoClose()) {
-                _messages.tryEmit(UiMessage("Se cerró la caja del día anterior automáticamente"))
-            }
-            if (c.pending.hasPreviousDayTransactions()) {
-                _pendingAlert.tryEmit(c.pending.pendingDays())
-                return@launch
-            }
-            busy.value = true
-            hasReprinted.value = false
-            hasCancelled.value = false
-            _messages.tryEmit(UiMessage(announce))
+            try {
+                if (c.closing.checkAndAutoClose()) {
+                    _messages.tryEmit(UiMessage("Se cerró la caja del día anterior automáticamente"))
+                }
+                if (c.pending.hasPreviousDayTransactions()) {
+                    _pendingAlert.tryEmit(c.pending.pendingDays())
+                    return@launch
+                }
+                hasReprinted.value = false
+                hasCancelled.value = false
+                _messages.tryEmit(UiMessage(announce))
 
-            // El comprobante se incrementa antes de escribir en la caja, como en Flutter.
-            c.comprobante.increment()
-            val last = runCatching { record(c.comprobante.formatted) }.getOrElse {
-                _messages.tryEmit(UiMessage("Error al guardar venta. Contacte soporte.", MessageKind.Error))
+                // El comprobante se incrementa antes de escribir en la caja, como en Flutter.
+                c.comprobante.increment()
+                val last = runCatching { record(c.comprobante.formatted) }.getOrElse {
+                    _messages.tryEmit(UiMessage("Error al guardar venta. Contacte soporte.", MessageKind.Error))
+                    return@launch
+                }
+                c.closing.updateLastTransactionDate()
+                c.prefs.lastTransaction = last
+                lastTransaction.value = last
+
+                // La impresión es independiente: un fallo no revierte la venta.
+                runCatching { print(last) }
+                    .onSuccess { _messages.tryEmit(UiMessage(doneText, MessageKind.Success)) }
+                    .onFailure { _messages.tryEmit(UiMessage(failText, MessageKind.Warning)) }
+            } finally {
                 busy.value = false
-                return@launch
             }
-            c.closing.updateLastTransactionDate()
-            c.prefs.lastTransaction = last
-            lastTransaction.value = last
-
-            // La impresión es independiente: un fallo no revierte la venta.
-            runCatching { print(last) }
-                .onSuccess { _messages.tryEmit(UiMessage(doneText, MessageKind.Success)) }
-                .onFailure { _messages.tryEmit(UiMessage(failText, MessageKind.Warning)) }
-            busy.value = false
         }
     }
 

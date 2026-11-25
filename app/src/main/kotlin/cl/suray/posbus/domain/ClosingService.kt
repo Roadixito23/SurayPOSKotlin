@@ -3,6 +3,7 @@ package cl.suray.posbus.domain
 import androidx.room.withTransaction
 import cl.suray.posbus.data.db.AppDatabase
 import cl.suray.posbus.data.db.DailyClosing
+import cl.suray.posbus.data.db.TransactionEntity
 import cl.suray.posbus.data.prefs.OpenTransaction
 import java.util.TimeZone
 
@@ -94,11 +95,20 @@ class ClosingService(
         else createNew(transactions, day, ClosingTotals.fromOpen(transactions), pdfFilename)
     }
 
-    /** Agrega [newTransactions] a un cierre existente y recalcula sus totales. */
+    /**
+     * Agrega [newTransactions] a un cierre existente y recalcula sus totales.
+     *
+     * Es idempotente: guardar en Room y vaciar la caja (SharedPreferences) no es atómico, así que
+     * si el proceso muere entre ambos pasos el siguiente cierre del mismo día vuelve a traer las
+     * mismas ventas. Por eso, dentro de la transacción, se descartan las que ya están en el cierre
+     * (misma huella, ver [newTransactionsOnly]). Si no queda nada nuevo, no se escribe nada y se
+     * devuelve [existing] tal cual (totales, conteo y `closedAt` sin cambios).
+     */
     suspend fun merge(existing: DailyClosing, newTransactions: List<OpenTransaction>): DailyClosing =
         db.withTransaction {
             val old = db.transactionDao().getByClosingId(existing.id)
-            val added = newTransactions.map { it.toEntity(existing.id, existing.year) }
+            val added = newTransactionsOnly(old, newTransactions.map { it.toEntity(existing.id, existing.year) })
+            if (added.isEmpty()) return@withTransaction existing
             db.transactionDao().insertAll(added)
 
             val all = old + added
@@ -114,4 +124,25 @@ class ClosingService(
             db.dailyClosingDao().update(updated)
             updated
         }
+}
+
+/**
+ * Huella estable de una venta guardada: comprobante + nombre + valor + timestamp (milisegundos).
+ *
+ * No se usan `id` ni `transactionId`: el primero lo asigna Room y el segundo se reinicia al vaciar
+ * la caja. `dia`/`mes`/`ano`/`hora` se derivan del timestamp, y `category`/`isCancellation` del
+ * nombre, así que no aportan. El timestamp en milisegundos distingue ventas legítimas aunque
+ * se repita el comprobante (al anular, el contador retrocede y se reutiliza el número).
+ */
+internal data class SaleFingerprint(val comprobante: String, val nombre: String, val valor: Double, val timestamp: Long)
+
+internal fun TransactionEntity.fingerprint() = SaleFingerprint(comprobante, nombre, valor, timestamp)
+
+/**
+ * Filtra de [incoming] las ventas cuya huella ya está en [existing] (las de un cierre anterior
+ * del mismo día). No deduplica dentro de [incoming]: la caja no repite ventas por sí misma.
+ */
+internal fun newTransactionsOnly(existing: List<TransactionEntity>, incoming: List<TransactionEntity>): List<TransactionEntity> {
+    val seen = existing.mapTo(HashSet()) { it.fingerprint() }
+    return incoming.filter { it.fingerprint() !in seen }
 }
