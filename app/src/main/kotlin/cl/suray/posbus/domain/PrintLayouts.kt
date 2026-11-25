@@ -16,6 +16,8 @@ data class TicketLayout(
     val numberLine: String,
     val tariffLine: String,
     val tipo: String,
+    /** "Destino: …" (pasajeros) o "Intermedio A - B"; null en tickets antiguos sin ruta. */
+    val routeLine: String?,
     val valueLine: String,
     val time: String,
     val date: String,
@@ -97,6 +99,7 @@ object TicketLayouts {
         fareTitle: String,
         nowMillis: Long,
         reprint: Boolean,
+        routeLine: String? = null,
     ): TicketLayout {
         val c = java.util.Calendar.getInstance().apply { timeInMillis = nowMillis }
         val time = "%02d:%02d:%02d".format(c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND))
@@ -105,6 +108,7 @@ object TicketLayouts {
             numberLine = "N° $comprobante",
             tariffLine = fareTitle,
             tipo = nombre,
+            routeLine = routeLine,
             valueLine = "Valor: $${formatClp(valor)}",
             time = time,
             date = date,
@@ -147,10 +151,7 @@ object ReportLayouts {
 
         fun isCancel(t: OpenTransaction) = t.nombre.startsWith(CANCELLATION_PREFIX)
         fun isOtros(n: String) = n.startsWith("Cargo:") || n == "Oferta Ruta"
-        fun isIntermedio(n: String): Boolean {
-            val l = n.lowercase()
-            return l.contains("int. hasta") || (l.contains("escolar") && l.contains("intermedio"))
-        }
+        fun isIntermedio(n: String) = Routes.isIntermedio(n)
 
         val cancels = sorted.filter(::isCancel)
         val otros = sorted.filter { !isCancel(it) && isOtros(it.nombre) }

@@ -75,11 +75,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cl.suray.posbus.R
 import cl.suray.posbus.data.prefs.Tarifa
 import cl.suray.posbus.domain.CargoCopy
+import cl.suray.posbus.domain.Routes
 import cl.suray.posbus.ui.theme.Hemiheads
 import cl.suray.posbus.ui.theme.SurayColors
 import java.text.NumberFormat
@@ -366,6 +368,8 @@ private fun SalesGrid(state: HomeUiState, vm: HomeViewModel, onSell: (Tarifa) ->
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Column(Modifier.padding(start = 15.dp, end = 15.dp, bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            DestinationButton(Routes.destinoLabel(state.direction), enabled, state.display, vm::toggleDirection)
+            Spacer(Modifier.height(1.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     SectionHeader("PASAJEROS")
@@ -391,6 +395,33 @@ private fun SalesGrid(state: HomeUiState, vm: HomeViewModel, onSell: (Tarifa) ->
                 }
             }
         }
+    }
+}
+
+/** Botón "Destino: xxx": cada toque invierte el sentido de la ruta activa (se configura en Ajustes → Rutas). */
+@Composable
+private fun DestinationButton(text: String, enabled: Boolean, display: DisplayPrefs, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(3.dp, if (enabled) SurayColors.Amber900 else Color.Gray),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = SurayColors.Amber700,
+            contentColor = Color.White,
+            disabledContainerColor = Color.Gray,
+            disabledContentColor = Color.White.copy(alpha = 0.6f),
+        ),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+    ) {
+        val size = (18f * display.textSizeMultiplier).sp
+        if (display.showIcons) Icon(Icons.Default.LocationOn, null, Modifier.size(size.value.dp * 0.9f + 4.dp))
+        Text(
+            text, fontSize = size, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center, modifier = Modifier.weight(1f, fill = false).padding(horizontal = 6.dp),
+        )
+        if (display.showIcons) Text("⇄", fontSize = size, fontWeight = FontWeight.Bold)
     }
 }
 

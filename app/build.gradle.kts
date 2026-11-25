@@ -32,6 +32,8 @@ android {
         targetSdk = 34
         versionCode = dateVersionCode
         versionName = dateVersionName
+        // El nombre visible de la app es la versión (yy.MM.dd).
+        resValue("string", "app_name", dateVersionName)
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

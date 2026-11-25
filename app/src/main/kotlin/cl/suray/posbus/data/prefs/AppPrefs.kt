@@ -87,6 +87,22 @@ class AppPrefs(private val sp: SharedPreferences) :
     private fun fareTitleKey(kind: FareKind) = "$KEY_FARE_TITLE${kind.name.lowercase()}"
     private fun fareShortKey(kind: FareKind) = "$KEY_FARE_SHORT${kind.name.lowercase()}"
 
+    // --- Rutas --------------------------------------------------------------------------------
+
+    var rutas: List<Ruta>
+        get() = decodeList(KEY_RUTAS, Ruta.serializer(), DEFAULT_RUTAS).ifEmpty { DEFAULT_RUTAS }
+        set(value) = encodeList(KEY_RUTAS, Ruta.serializer(), value)
+
+    /** Índice de la ruta activa, acotado a la lista actual. */
+    var rutaActiva: Int
+        get() = sp.getInt(KEY_RUTA_ACTIVA, 0).coerceIn(0, rutas.size - 1)
+        set(value) = sp.edit().putInt(KEY_RUTA_ACTIVA, value).apply()
+
+    /** `true` = sentido de vuelta (destino → origen) de la ruta activa. */
+    var rutaInvertida: Boolean
+        get() = sp.getBoolean(KEY_RUTA_INVERTIDA, false)
+        set(value) = sp.edit().putBoolean(KEY_RUTA_INVERTIDA, value).apply()
+
     // --- Comprobante --------------------------------------------------------------------------
 
     override var comprobanteNumber: Int
@@ -271,6 +287,9 @@ class AppPrefs(private val sp: SharedPreferences) :
         const val KEY_UNIFIED_FARE = "tarifa_unica"
         const val KEY_FARE_TITLE = "fare_title_"
         const val KEY_FARE_SHORT = "fare_short_"
+        const val KEY_RUTAS = "rutas"
+        const val KEY_RUTA_ACTIVA = "ruta_activa"
+        const val KEY_RUTA_INVERTIDA = "ruta_invertida"
         const val KEY_COMPROBANTE_NUMBER = "comprobanteNumber"
         const val KEY_TICKET_ID = "ticketId"
         const val KEY_HOLIDAYS_CACHE = "holidays_cache_"
@@ -307,6 +326,8 @@ class AppPrefs(private val sp: SharedPreferences) :
             "Oferta Ruta" to "OR",
             "Cargo" to "Cargo",
         )
+
+        val DEFAULT_RUTAS = listOf(Ruta("Aysén", "Coyhaique"))
 
         val DEFAULT_WEEKDAY_FARES = listOf(
             Tarifa("Público General", 3600.0),

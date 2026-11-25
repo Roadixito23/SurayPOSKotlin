@@ -24,6 +24,7 @@ import cl.suray.posbus.domain.Clock
 import cl.suray.posbus.domain.ReportLayouts
 import cl.suray.posbus.domain.PdfFilePrinter
 import cl.suray.posbus.domain.ReportPrinter
+import cl.suray.posbus.domain.Routes
 import cl.suray.posbus.domain.TicketLayouts
 import cl.suray.posbus.domain.TicketPrinter
 import java.io.File
@@ -47,8 +48,8 @@ class AndroidPrinter(
     private val pdfDir: File = File(context.filesDir, "pdfs"),
 ) : TicketPrinter, ReportPrinter, PdfFilePrinter {
 
-    override suspend fun printTicket(nombre: String, valor: Double, comprobante: String, fareTitle: String, reprint: Boolean) {
-        val t = TicketLayouts.regular(nombre, valor, comprobante, fareTitle, clock.nowMillis(), reprint)
+    override suspend fun printTicket(nombre: String, valor: Double, comprobante: String, fareTitle: String, rutaLinea: String?, reprint: Boolean) {
+        val t = TicketLayouts.regular(nombre, valor, comprobante, fareTitle, clock.nowMillis(), reprint, rutaLinea)
         val bytes = withContext(Dispatchers.Default) {
             val res = context.resources
             val logo = BitmapFactory.decodeResource(res, R.drawable.logobkwt)
@@ -59,6 +60,8 @@ class AndroidPrinter(
                 if (t.isReprint) pen.boxedCentered("REIMPRESIÓN", 10f, true, 2f, 5f, fill = Color.LTGRAY)
                 pen.centered(t.tariffLine, 12f, bold = true)
                 pen.centered(t.tipo, 12f)
+                // Ruta: más chica y en cursiva que el tipo; sutil pero legible.
+                t.routeLine?.let { pen.space(1f); pen.centered(it, Routes.TICKET_TEXT_PT, italic = true) }
                 pen.space(5f)
                 pen.boxedCentered(t.valueLine, 15f, true, 4f, 8f)
                 pen.space(5f)

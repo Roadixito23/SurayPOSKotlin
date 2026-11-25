@@ -7,6 +7,10 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class Tarifa(val nombre: String, val precio: Double)
 
+/** Ruta del bus (`rutas`): el botón Destino del Home alterna entre sus dos extremos. */
+@Serializable
+data class Ruta(val origen: String, val destino: String)
+
 /** Venta de la caja abierta (`reporte_caja_transactions`). */
 @Serializable
 data class OpenTransaction(
@@ -43,6 +47,8 @@ data class LastTransaction(
     val fareKind: String? = null,
     /** Título de tarifa tal como se imprimió; la reimpresión lo repite aunque luego se renombre la tarifa. Null en ventas antiguas. */
     val fareTitle: String? = null,
+    /** Línea de ruta impresa en el ticket ("Destino: …" o "Intermedio A - B"), para reimprimirla igual. */
+    val rutaLinea: String? = null,
 ) {
     /** Tarifa de esta venta, para reimprimir con el título original. */
     val fare: FareKind get() = FareKind.fromStored(fareKind, switchValue)

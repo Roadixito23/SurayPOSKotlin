@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import cl.suray.posbus.AppContainer
+import cl.suray.posbus.data.prefs.AppPrefs
 import cl.suray.posbus.data.prefs.CargoData
 import cl.suray.posbus.data.prefs.LastTransaction
 import cl.suray.posbus.data.prefs.OfferEntry
@@ -18,6 +19,8 @@ import cl.suray.posbus.domain.DateParts
 import cl.suray.posbus.domain.FareKind
 import cl.suray.posbus.domain.faresFor
 import cl.suray.posbus.domain.LocalDay
+import cl.suray.posbus.domain.Direction
+import cl.suray.posbus.domain.Routes
 import cl.suray.posbus.domain.SumUpConfig
 import cl.suray.posbus.domain.cancellableLast
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +31,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -64,6 +68,8 @@ data class HomeUiState(
     val lastIsCargo: Boolean = false,
     val display: DisplayPrefs = DisplayPrefs(showIcons = true, textSizeMultiplier = 0.8f),
     val colors: ButtonPalette = ButtonPalette(emptyMap()),
+    /** Sentido actual de la ruta activa (botón "Destino" y línea del ticket). */
+    val direction: Direction = Routes.direction(AppPrefs.DEFAULT_RUTAS.first(), false),
 ) {
     val hasPending: Boolean get() = pendingDays > 0
 }
@@ -137,6 +143,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             cardAvailable = SumUpConfig.isReady(c.prefs.sumUpEnabled, c.prefs.sumUpAffiliateKey),
             display = DisplayPrefs(c.prefs.showIcons, c.prefs.textSizeMultiplier),
             colors = ButtonPalette.load(c.prefs),
+            direction = currentDirection(),
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
 
@@ -178,6 +185,16 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     /** Título vigente de [fare], tal cual lo escribió el usuario (es lo que sale en el ticket). */
     private fun titleOf(fare: FareKind) = c.prefs.fareTitle(fare).name
 
+    private fun currentDirection(): Direction =
+        Routes.direction(c.prefs.rutas[c.prefs.rutaActiva], c.prefs.rutaInvertida)
+
+    /** Botón "Destino": alterna ida/vuelta de la ruta activa y lo recuerda tras reiniciar. */
+    fun toggleDirection() {
+        if (busy.value) return
+        c.prefs.rutaInvertida = !c.prefs.rutaInvertida
+        c.settingsRevision.update { it + 1 }
+    }
+
     fun setSundayRate(value: Boolean) {
         sundayRate.value = value
         autoRate.value = false
@@ -188,15 +205,16 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     fun sell(tipo: String, valor: Double) {
         val fare = currentFare()
         val title = titleOf(fare)
+        val ruta = Routes.ticketLine(tipo, currentDirection())
         launchSale(
             announce = "Generando ticket de $tipo…",
             doneText = "Ticket generado correctamente",
             failText = "Venta guardada. Error al imprimir ticket.",
             record = { comprobante ->
                 c.register.receiveData(tipo, valor, comprobante)
-                LastTransaction(tipo, valor, comprobante, fare == FareKind.SUNDAY, fareKind = fare.name, fareTitle = title)
+                LastTransaction(tipo, valor, comprobante, fare == FareKind.SUNDAY, fareKind = fare.name, fareTitle = title, rutaLinea = ruta)
             },
-            print = { last -> c.printer.printTicket(tipo, valor, last.comprobante, title) },
+            print = { last -> c.printer.printTicket(tipo, valor, last.comprobante, title, ruta) },
         )
     }
 
@@ -331,7 +349,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                 when {
                     cargo != null -> c.printer.printCargo(cargo, last.comprobante, copies, reprint = true)
                     last.isOffer -> c.printer.printOffer(offer.orEmpty(), last.comprobante, reprint = true)
-                    else -> c.printer.printTicket(last.nombre, last.valor, last.comprobante, last.fareTitle ?: titleOf(last.fare), reprint = true)
+                    else -> c.printer.printTicket(last.nombre, last.valor, last.comprobante, last.fareTitle ?: titleOf(last.fare), last.rutaLinea, reprint = true)
                 }
             }
                 .onSuccess { if (!last.isCargo) hasReprinted.value = true; _messages.tryEmit(UiMessage("Ticket reimpreso", MessageKind.Success)) }

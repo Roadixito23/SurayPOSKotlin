@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import cl.suray.posbus.AppContainer
 import cl.suray.posbus.data.prefs.AppPrefs
+import cl.suray.posbus.data.prefs.Ruta
+import cl.suray.posbus.domain.Routes
 import cl.suray.posbus.data.prefs.Tarifa
 import cl.suray.posbus.domain.FareKind
 import cl.suray.posbus.domain.FareTitle
@@ -30,6 +32,8 @@ data class SettingsUiState(
     val textSize: Float = 0.8f,
     val pdfMargin: Float = AppPrefs.DEFAULT_PDF_END_MARGIN,
     val abbreviations: Map<String, String> = emptyMap(),
+    val rutas: List<Ruta> = emptyList(),
+    val rutaActiva: Int = 0,
 )
 
 /** Resultado de una acción: `null` = correcto, texto = motivo del rechazo. */
@@ -56,6 +60,8 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         textSize = c.prefs.textSizeMultiplier,
         pdfMargin = c.prefs.pdfEndMargin,
         abbreviations = AppPrefs.DEFAULT_ABBREVIATIONS.keys.associateWith { c.prefs.abbreviation(it) },
+        rutas = c.prefs.rutas,
+        rutaActiva = c.prefs.rutaActiva,
     )
 
     /** Relee todo y avisa a Home. */
@@ -106,6 +112,42 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     /** Vuelve al nombre y abreviatura de fábrica de [kind]. */
     fun resetFareTitle(kind: FareKind) {
         c.prefs.setFareTitle(kind, null)
+        changed()
+    }
+
+    // --- Rutas ---
+
+    /** [index] = null agrega una ruta nueva al final. */
+    fun saveRoute(index: Int?, origen: String, destino: String): Rejection {
+        Routes.validate(origen, destino)?.let { return it }
+        val ruta = Ruta(origen.trim(), destino.trim())
+        val list = c.prefs.rutas.toMutableList()
+        if (index == null) list += ruta else if (index in list.indices) list[index] = ruta else return "Ruta inexistente"
+        c.prefs.rutas = list
+        if (index == c.prefs.rutaActiva) c.prefs.rutaInvertida = false
+        changed()
+        return null
+    }
+
+    fun deleteRoute(index: Int): Rejection {
+        val list = c.prefs.rutas.toMutableList()
+        if (list.size <= 1) return "Debe quedar al menos una ruta"
+        if (index !in list.indices) return "Ruta inexistente"
+        val active = c.prefs.rutaActiva
+        list.removeAt(index)
+        c.prefs.rutas = list
+        when {
+            index == active -> { c.prefs.rutaActiva = 0; c.prefs.rutaInvertida = false }
+            index < active -> c.prefs.rutaActiva = active - 1
+        }
+        changed()
+        return null
+    }
+
+    fun setActiveRoute(index: Int) {
+        if (index !in c.prefs.rutas.indices || index == c.prefs.rutaActiva) return
+        c.prefs.rutaActiva = index
+        c.prefs.rutaInvertida = false
         changed()
     }
 

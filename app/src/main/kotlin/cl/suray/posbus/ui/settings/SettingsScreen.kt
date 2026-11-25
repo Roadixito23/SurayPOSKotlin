@@ -33,6 +33,11 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import cl.suray.posbus.data.prefs.Ruta
+import cl.suray.posbus.domain.Routes as DomainRoutes
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -96,6 +101,7 @@ private enum class SettingsTab(val title: String, val icon: Int?) {
     Payments("Pagos", R.drawable.ic_card),
     Printing("Impresión", R.drawable.ic_print),
     Prices("Precios", R.drawable.ic_money),
+    Routes("Rutas", null),
     Appearance("Apariencia", null),
     Abbreviations("Abreviaturas", null),
 }
@@ -105,6 +111,7 @@ private fun SettingsTab.painter() = when (this) {
     SettingsTab.Security -> rememberVectorPainter(Icons.Default.Lock)
     SettingsTab.Appearance -> rememberVectorPainter(Icons.Default.Create)
     SettingsTab.Abbreviations -> rememberVectorPainter(Icons.Default.List)
+    SettingsTab.Routes -> rememberVectorPainter(Icons.Default.LocationOn)
     else -> painterResource(icon!!)
 }
 
@@ -176,6 +183,7 @@ fun SettingsScreen(vm: SettingsViewModel, printerVm: PrinterDiagViewModel, onBac
                 SettingsTab.Payments -> PaymentsTab(state, vm, ::report)
                 SettingsTab.Printing -> PrinterDiagTab(printerVm)
                 SettingsTab.Prices -> PricesTab(state, vm, ::report)
+                SettingsTab.Routes -> RoutesTab(state, vm, ::report)
                 SettingsTab.Appearance -> AppearanceTab(state, vm, ::report, onButtonColors)
                 SettingsTab.Abbreviations -> AbbreviationsTab(state, vm)
             }
@@ -467,6 +475,73 @@ private fun FareTitleDialog(
                 Text("Restaurar nombre de fábrica (${kind.defaultTitle.name})", color = SurayColors.Amber900, textAlign = TextAlign.Center)
             }
         }
+    }
+}
+
+@Composable
+private fun RoutesTab(state: SettingsUiState, vm: SettingsViewModel, report: (Rejection, String) -> Unit) {
+    // Pair(índice o null si es nueva, ruta inicial)
+    var editing by remember { mutableStateOf<Pair<Int?, Ruta>?>(null) }
+    var deleting by remember { mutableStateOf<Int?>(null) }
+    val pin = rememberVectorPainter(Icons.Default.LocationOn)
+
+    Section("Rutas", pin, "El botón Destino del inicio alterna entre origen y destino de la ruta activa") {
+        state.rutas.forEachIndexed { i, r ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(i == state.rutaActiva, { vm.setActiveRoute(i); report(null, "Ruta activa: ${r.origen} - ${r.destino}") })
+                Text("${r.origen} ⇄ ${r.destino}", Modifier.weight(1f), fontWeight = if (i == state.rutaActiva) FontWeight.Bold else FontWeight.Normal)
+                IconButton({ editing = i to r }) { Icon(Icons.Default.Edit, "Editar") }
+                IconButton({ deleting = i }, enabled = state.rutas.size > 1) { Icon(Icons.Default.Delete, "Borrar") }
+            }
+            if (i < state.rutas.lastIndex) HorizontalDivider()
+        }
+        OutlinedButton({ editing = null to Ruta("", "") }, Modifier.fillMaxWidth()) { Text("Agregar ruta") }
+        Text(
+            "Máximo ${DomainRoutes.NAME_MAX} caracteres por nombre, para que quepan en el botón y en los tickets.",
+            fontSize = 12.sp, color = Color(0xFF6B7C8C),
+        )
+    }
+
+    editing?.let { (index, r) ->
+        var origen by remember { mutableStateOf(r.origen) }
+        var destino by remember { mutableStateOf(r.destino) }
+        var error by remember { mutableStateOf<String?>(null) }
+        val focus = rememberAutoFocus()
+        fun save() {
+            error = vm.saveRoute(index, origen, destino)
+            if (error == null) { editing = null; report(null, "Ruta guardada") }
+        }
+        @Composable
+        fun field(value: String, label: String, onChange: (String) -> Unit, mod: Modifier, last: Boolean) = OutlinedTextField(
+            value, { onChange(it.take(DomainRoutes.NAME_MAX)); error = null }, mod.fillMaxWidth(),
+            label = { Text(label) }, singleLine = true, shape = SurayFieldShape, colors = surayFieldColors(),
+            supportingText = { Text("${value.length}/${DomainRoutes.NAME_MAX}") },
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = if (last) ImeAction.Done else ImeAction.Next),
+            keyboardActions = KeyboardActions(onDone = { save() }),
+        )
+        SurayDialogCard(
+            title = if (index == null) "Nueva ruta" else "Editar ruta",
+            onDismiss = { editing = null },
+            confirmText = "Guardar",
+            onConfirm = ::save,
+            icon = pin,
+            error = error,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                field(origen, "Origen", { origen = it }, Modifier.focusRequester(focus), false)
+                field(destino, "Destino", { destino = it }, Modifier, true)
+            }
+        }
+    }
+    deleting?.let { i ->
+        val r = state.rutas.getOrNull(i)
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Borrar ruta") },
+            text = { Text("¿Borrar la ruta ${r?.origen} - ${r?.destino}?") },
+            confirmButton = { TextButton({ deleting = null; report(vm.deleteRoute(i), "Ruta borrada") }) { Text("Borrar") } },
+            dismissButton = { TextButton({ deleting = null }) { Text("Cancelar") } },
+        )
     }
 }
 
