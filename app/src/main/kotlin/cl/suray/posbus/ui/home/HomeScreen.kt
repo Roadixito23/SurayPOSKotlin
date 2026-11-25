@@ -2,6 +2,8 @@ package cl.suray.posbus.ui.home
 
 import cl.suray.posbus.ui.components.PasswordPromptDialog
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -97,7 +99,7 @@ private val Clp: NumberFormat = NumberFormat.getIntegerInstance(Locale("es", "CL
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onCargo: () -> Unit, onLogout: () -> Unit) {
+fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onOffer: () -> Unit, onCargo: () -> Unit, onLogout: () -> Unit) {
     val state by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val drawer = rememberDrawerState(DrawerValue.Closed)
@@ -107,13 +109,11 @@ fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onCargo: ()
     var askCancel by remember { mutableStateOf(false) }
     var askReprint by remember { mutableStateOf(false) }
     var cargoCopies by remember { mutableStateOf(false) }
-    var showOffer by remember { mutableStateOf(false) }
-    var pendingAlert by remember { mutableStateOf<Int?>(null) }
+    val pendingAlert by vm.pendingAlert.collectAsState()
 
     LaunchedEffect(Unit) {
         vm.messages.collect { snackbar.showSnackbar(it.text, duration = SnackbarDuration.Short) }
     }
-    LaunchedEffect(Unit) { vm.pendingAlert.collect { pendingAlert = it } }
 
     fun requestSale(t: Tarifa) {
         if (state.cardAvailable) payment = t else vm.sell(t.nombre, t.precio)
@@ -146,9 +146,9 @@ fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onCargo: ()
                         onCancel = { askCancel = true },
                         onReprint = { askReprint = true },
                     )
-                    if (state.hasPending) PendingBanner(onClose = { onNavigate(Destination.Reports) })
+                    if (state.hasPending) PendingBanner(state.pendingDays, onCloseRegister = { onNavigate(Destination.Reports) })
                     StatusBand(state, onRate = vm::setSundayRate)
-                    SalesGrid(state, vm, onSell = ::requestSale, onOffer = { showOffer = true }, onCargo = onCargo)
+                    SalesGrid(state, vm, onSell = ::requestSale, onOffer = onOffer, onCargo = onCargo)
                 }
             }
         }
@@ -193,26 +193,23 @@ fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onCargo: ()
             dismissButton = { TextButton({ cargoCopies = false }) { Text("Cancelar") } },
         )
     }
-    if (showOffer) {
-        OfferDialog(onSubmit = vm::sellOffer, onClose = { showOffer = false })
-    }
     pendingAlert?.let { days ->
         AlertDialog(
-            onDismissRequest = {},
+            onDismissRequest = vm::dismissPendingAlert,
             icon = { Icon(Icons.Default.Warning, null, tint = Color(0xFFFF9800)) },
             title = { Text("Cierre de Caja Pendiente") },
             text = {
                 Text(
-                    "No es posible generar ventas porque existen transacciones de hace $days " +
-                        "${if (days == 1) "día" else "días"} sin cerrar.\n\nDebe cerrar la caja para continuar usando el sistema.",
+                    "Hay ventas de hace $days ${if (days == 1) "día" else "días"} sin cerrar. " +
+                        "Las ventas quedan bloqueadas hasta cerrar la caja.",
                 )
             },
-            dismissButton = { TextButton({ pendingAlert = null; vm.alertDismissed() }) { Text("Cancelar") } },
+            dismissButton = { TextButton(vm::dismissPendingAlert) { Text("Ahora no") } },
             confirmButton = {
                 Button(
-                    onClick = { pendingAlert = null; vm.alertDismissed(); onNavigate(Destination.Reports) },
+                    onClick = { vm.dismissPendingAlert(); onNavigate(Destination.Reports) },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8F00)),
-                ) { Text("Ir a Reportes") }
+                ) { Text("Cerrar caja") }
             },
         )
     }
@@ -220,8 +217,7 @@ fun HomeScreen(vm: HomeViewModel, onNavigate: (Destination) -> Unit, onCargo: ()
 
 @Composable
 private fun TopBar(state: HomeUiState, onMenu: () -> Unit, onCancel: () -> Unit, onReprint: () -> Unit) {
-    val colors = if (state.hasPending) listOf(SurayColors.Orange800, SurayColors.Red700)
-    else listOf(SurayColors.Amber700, SurayColors.Amber900)
+    val colors = listOf(SurayColors.Amber700, SurayColors.Amber900)
     Column(
         Modifier
             .fillMaxWidth()
@@ -240,17 +236,6 @@ private fun TopBar(state: HomeUiState, onMenu: () -> Unit, onCancel: () -> Unit,
                 Icon(ImageVector.vectorResource(R.drawable.ic_receipt), null, Modifier.size(20.dp), tint = Color.White)
                 Spacer(Modifier.width(6.dp))
                 Text(state.nextComprobante.toString().padStart(6, '0'), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp, letterSpacing = 1.sp)
-            }
-            if (state.hasPending) {
-                Spacer(Modifier.width(10.dp))
-                Row(
-                    Modifier.clip(RoundedCornerShape(12.dp)).background(SurayColors.Red900).padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Default.Warning, null, Modifier.size(16.dp), tint = Color.White)
-                    Spacer(Modifier.width(4.dp))
-                    Text("${state.pendingDays}d", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
             }
             Spacer(Modifier.weight(1f))
             CircleButton(if (state.canCancel) SurayColors.Error else Color(0xFFE0E0E0), state.canCancel, onCancel) {
@@ -278,16 +263,35 @@ private fun CircleButton(color: Color, enabled: Boolean, onClick: () -> Unit, co
     ) { content() }
 }
 
+/** Único aviso permanente de caja pendiente: explica por qué las ventas están bloqueadas y lleva al cierre. */
 @Composable
-private fun PendingBanner(onClose: () -> Unit) {
+private fun PendingBanner(days: Int, onCloseRegister: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFFFFCDD2)).padding(horizontal = 16.dp, vertical = 6.dp),
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFFFEBEE))
+            .border(1.dp, Color(0xFFEF9A9A), RoundedCornerShape(12.dp))
+            .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Warning, null, Modifier.size(18.dp), tint = Color.Red)
-        Spacer(Modifier.width(8.dp))
-        Text("Hay un dia con ventas sin cerrar", Modifier.weight(1f), color = SurayColors.Red900, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-        Text("Cerrar", Modifier.clickable(onClick = onClose).padding(4.dp), color = SurayColors.Red900, fontSize = 11.sp)
+        Icon(Icons.Default.Warning, null, Modifier.size(22.dp), tint = SurayColors.Red700)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "Caja sin cerrar · hace $days ${if (days == 1) "día" else "días"}",
+                color = SurayColors.Red900, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+            )
+            Text("Ventas bloqueadas hasta cerrar la caja", color = SurayColors.Red900.copy(alpha = 0.8f), fontSize = 12.sp)
+        }
+        Button(
+            onCloseRegister,
+            Modifier.height(36.dp),
+            shape = RoundedCornerShape(10.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = SurayColors.Red700),
+        ) { Text("Cerrar caja", fontSize = 13.sp, fontWeight = FontWeight.Bold) }
     }
 }
 
@@ -320,12 +324,28 @@ private fun StatusBand(state: HomeUiState, onRate: (Boolean) -> Unit) {
 
 @Composable
 private fun TransactionCounter(sales: Int, cancellations: Int) {
-    Row(Modifier.height(40.dp).width(120.dp).clip(RoundedCornerShape(10.dp))) {
-        Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFF1900A2)), contentAlignment = Alignment.Center) {
-            Text("$sales", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+    // Pastilla azul (ventas) | roja (anulaciones) con un círculo verde al centro: ventas − anulaciones.
+    val net = sales - cancellations
+    Box(Modifier.width(160.dp).height(46.dp), contentAlignment = Alignment.Center) {
+        Row(Modifier.height(40.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp))) {
+            Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFF1900A2)).padding(end = 22.dp), contentAlignment = Alignment.Center) {
+                Text("$sales", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            }
+            Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFFFF0C00)).padding(start = 22.dp), contentAlignment = Alignment.Center) {
+                Text("$cancellations", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            }
         }
-        Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFFFF0C00)), contentAlignment = Alignment.Center) {
-            Text("$cancellations", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Box(
+            Modifier.size(46.dp).border(2.5.dp, Color.White, CircleShape).padding(2.5.dp).background(Color(0xFF2E7D32), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "$net",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = if (net > 99 || net < -9) 14.sp else 18.sp,
+                maxLines = 1,
+            )
         }
     }
 }

@@ -83,9 +83,14 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     private val _messages = MutableSharedFlow<UiMessage>(extraBufferCapacity = 8)
     val messages: SharedFlow<UiMessage> = _messages.asSharedFlow()
 
-    private val _pendingAlert = MutableSharedFlow<Int>(extraBufferCapacity = 1)
-    /** Días pendientes cuando hay que mostrar el diálogo de cierre obligatorio. */
-    val pendingAlert: SharedFlow<Int> = _pendingAlert.asSharedFlow()
+    private val _pendingAlert = MutableStateFlow<Int?>(null)
+    /**
+     * Días pendientes mientras el diálogo de cierre obligatorio está abierto (null = cerrado). Es estado, no evento,
+     * para que no se pierda si se emite antes de que Inicio empiece a observarlo.
+     */
+    val pendingAlert: StateFlow<Int?> = _pendingAlert
+
+    fun dismissPendingAlert() { _pendingAlert.value = null }
 
 
     private val base = combine(c.register.changes, c.comprobante.numberState, today, pendingDays) { open, number, day, pending ->
@@ -139,23 +144,17 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         viewModelScope.launch {
             while (true) {
                 today.value = LocalDay.of(c.clock.nowMillis())
-                pendingDays.value = if (c.register.hasPendingOld()) c.register.oldestPendingDays().coerceAtLeast(1) else 0
+                val pending = if (c.register.hasPendingOld()) c.register.oldestPendingDays().coerceAtLeast(1) else 0
+                // El diálogo sale una sola vez, cuando aparece la caja pendiente (al abrir Inicio o al cambiar el día);
+                // mientras siga pendiente, el banner de Inicio es el único aviso.
+                if (pending > 0 && pendingDays.value == 0) _pendingAlert.value = pending
+                pendingDays.value = pending
                 delay(1_000)
             }
         }
         // Los feriados solo importan en el modo diferenciado: se consulta al abrir y cada vez que se apaga la tarifa única.
         viewModelScope.launch {
             c.settingsRevision.map { c.prefs.unifiedFare }.distinctUntilChanged().collect { detectRate() }
-        }
-        viewModelScope.launch {
-            c.pending.startPeriodicCheck(viewModelScope) {
-                c.pending.markAlertShown()
-                _pendingAlert.tryEmit(c.pending.pendingDays())
-            }
-            if (c.pending.hasPreviousDayTransactions()) {
-                c.pending.markAlertShown()
-                _pendingAlert.tryEmit(c.pending.pendingDays())
-            }
         }
     }
 
@@ -184,8 +183,6 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         autoRate.value = false
         holidayReason.value = null
     }
-
-    fun alertDismissed() = c.pending.onAlertDismissed(viewModelScope)
 
     /** Venta en efectivo: cierre automático → comprobante → caja → última venta → impresión. */
     fun sell(tipo: String, valor: Double) {
@@ -260,7 +257,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                     _messages.tryEmit(UiMessage("Se cerró la caja del día anterior automáticamente"))
                 }
                 if (c.pending.hasPreviousDayTransactions()) {
-                    _pendingAlert.tryEmit(c.pending.pendingDays())
+                    _pendingAlert.value = c.pending.pendingDays().coerceAtLeast(1)
                     return@launch
                 }
                 hasReprinted.value = false
@@ -341,10 +338,6 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                 .onFailure { _messages.tryEmit(UiMessage("Error al reimprimir: ${it.message}", MessageKind.Error)) }
             busy.value = false
         }
-    }
-
-    override fun onCleared() {
-        c.pending.stop()
     }
 
     class Factory(private val c: AppContainer) : ViewModelProvider.Factory {

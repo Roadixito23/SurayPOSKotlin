@@ -15,6 +15,7 @@ import cl.suray.posbus.ui.cargo.CargoScreen
 import cl.suray.posbus.ui.home.Destination
 import cl.suray.posbus.ui.home.HomeScreen
 import cl.suray.posbus.ui.home.HomeViewModel
+import cl.suray.posbus.ui.home.OfferScreen
 import cl.suray.posbus.ui.login.LoginScreen
 import cl.suray.posbus.ui.backup.BackupScreen
 import cl.suray.posbus.ui.backup.BackupViewModel
@@ -34,6 +35,7 @@ import cl.suray.posbus.ui.settings.SettingsViewModel
 private const val LOGIN = "login"
 private const val HOME = "home"
 private const val CARGO = "cargo"
+private const val OFFER = "offer"
 private const val BUTTON_COLORS = "button_colors"
 
 @Composable
@@ -52,6 +54,7 @@ fun SurayNavHost(container: AppContainer) {
             HomeScreen(
                 vm = vm,
                 onNavigate = { nav.navigate(it.name) },
+                onOffer = { nav.navigate(OFFER) },
                 onCargo = { nav.navigate(CARGO) },
                 onLogout = { nav.navigate(LOGIN) { popUpTo(HOME) { inclusive = true } } },
             )
@@ -64,6 +67,11 @@ fun SurayNavHost(container: AppContainer) {
             // Comparte el ViewModel de Home: la venta pasa por la misma canalización (cierre automático, comprobante, caja).
             val homeVm: HomeViewModel = viewModel(nav.getBackStackEntry(HOME), factory = HomeViewModel.Factory(container))
             CargoScreen(onSubmit = { homeVm.sellCargo(it); nav.popBackStack() }, onBack = { nav.popBackStack() })
+        }
+        composable(OFFER) {
+            // Igual que Cargo: comparte el ViewModel de Home; si la oferta es válida vuelve a Home, que muestra el resultado.
+            val homeVm: HomeViewModel = viewModel(nav.getBackStackEntry(HOME), factory = HomeViewModel.Factory(container))
+            OfferScreen(onSubmit = homeVm::sellOffer, onBack = { nav.popBackStack() })
         }
         composable(Destination.Reports.name) {
             val vm: ReportViewModel = viewModel(factory = ReportViewModel.Factory(container))

@@ -120,31 +120,17 @@ class StatisticsTest {
     }
 }
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class PendingTransactionServiceTest {
-    @Test fun alertFiresEveryFiveMinutesUntilShown() = runTest {
-        val store = FakeRegisterStore().apply { openTransactions = listOf(tx(1, "A", 1.0, dia = "01", mes = "01", ano = "2020")); openNextId = 2 }
+    @Test fun oldSalesArePending() {
+        val store = FakeRegisterStore().apply { openTransactions = listOf(tx(1, "A", 1.0, dia = "20", mes = "10", ano = "2026")); openNextId = 2 }
         val svc = PendingTransactionService(CashRegister(store, FakeClock.at(2026, 10, 21), UTC))
-        var alerts = 0
-        svc.startPeriodicCheck(backgroundScope) { alerts++; svc.markAlertShown() }
-
-        advanceTimeBy(PendingTransactionService.CHECK_INTERVAL_MS - 1); assertEquals(0, alerts)
-        advanceTimeBy(2); assertEquals(1, alerts)
-        advanceTimeBy(PendingTransactionService.CHECK_INTERVAL_MS); assertEquals(1, alerts) // ya mostrada
-
-        svc.onAlertDismissed(backgroundScope)
-        advanceTimeBy(PendingTransactionService.CHECK_INTERVAL_MS + 1)
-        assertFalse(svc.hasShownAlert)
-        svc.stop()
+        assertTrue(svc.hasPreviousDayTransactions())
+        assertEquals(1, svc.pendingDays())
     }
 
-    @Test fun nothingPendingMeansNoAlert() = runTest {
+    @Test fun nothingPending() {
         val svc = PendingTransactionService(CashRegister(FakeRegisterStore(), FakeClock.at(2026, 10, 21), UTC))
-        var alerts = 0
-        svc.startPeriodicCheck(backgroundScope) { alerts++ }
-        advanceTimeBy(PendingTransactionService.CHECK_INTERVAL_MS * 3)
-        assertEquals(0, alerts)
-        assertNull(null)
-        svc.stop()
+        assertFalse(svc.hasPreviousDayTransactions())
+        assertEquals(0, svc.pendingDays())
     }
 }
