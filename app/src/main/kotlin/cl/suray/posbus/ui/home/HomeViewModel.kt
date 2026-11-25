@@ -46,6 +46,11 @@ data class HomeUiState(
     /** Tarifa única toda la semana: no hay interruptor L-S / D-F ni detección de feriados. */
     val unifiedFare: Boolean = true,
     val sundayRate: Boolean = false,
+    /** Abreviatura editable de la tarifa que marca el interruptor ahora (L-S o D/F según [sundayRate]). */
+    val fareShort: String = FareKind.WEEKDAY.defaultTitle.short,
+    /** Abreviaturas editables de cada lado del interruptor de Inicio. */
+    val weekdayShort: String = FareKind.WEEKDAY.defaultTitle.short,
+    val sundayShort: String = FareKind.SUNDAY.defaultTitle.short,
     val autoRate: Boolean = false,
     val holidayReason: String? = null,
     val pendingDays: Int = 0,
@@ -108,10 +113,15 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         val isCargo = last?.nombre?.lowercase()?.contains("cargo") == true
         val unified = c.prefs.unifiedFare
         val kind = FareKind.of(unified, sunday)
+        val weekdayShort = c.prefs.fareTitle(FareKind.WEEKDAY).short
+        val sundayShort = c.prefs.fareTitle(FareKind.SUNDAY).short
         s.copy(
             unifiedFare = unified,
             // Con tarifa única el interruptor, el ⚡ y el aviso de feriado no existen: todo se cobra como lunes a sábado.
             sundayRate = kind == FareKind.SUNDAY,
+            fareShort = if (kind == FareKind.SUNDAY) sundayShort else weekdayShort,
+            weekdayShort = weekdayShort,
+            sundayShort = sundayShort,
             autoRate = auto && !unified,
             holidayReason = if (unified) null else reason,
             canCancel = s.canCancel && !cancelled,
@@ -166,6 +176,9 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     /** Tarifa vigente: la única si está activada; si no, la que marca el interruptor L-S / D/F. */
     private fun currentFare() = FareKind.of(c.prefs.unifiedFare, sundayRate.value)
 
+    /** Título vigente de [fare], tal cual lo escribió el usuario (es lo que sale en el ticket). */
+    private fun titleOf(fare: FareKind) = c.prefs.fareTitle(fare).name
+
     fun setSundayRate(value: Boolean) {
         sundayRate.value = value
         autoRate.value = false
@@ -177,15 +190,16 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     /** Venta en efectivo: cierre automático → comprobante → caja → última venta → impresión. */
     fun sell(tipo: String, valor: Double) {
         val fare = currentFare()
+        val title = titleOf(fare)
         launchSale(
             announce = "Generando ticket de $tipo…",
             doneText = "Ticket generado correctamente",
             failText = "Venta guardada. Error al imprimir ticket.",
             record = { comprobante ->
                 c.register.receiveData(tipo, valor, comprobante)
-                LastTransaction(tipo, valor, comprobante, fare == FareKind.SUNDAY, fareKind = fare.name)
+                LastTransaction(tipo, valor, comprobante, fare == FareKind.SUNDAY, fareKind = fare.name, fareTitle = title)
             },
-            print = { last -> c.printer.printTicket(tipo, valor, last.comprobante, fare) },
+            print = { last -> c.printer.printTicket(tipo, valor, last.comprobante, title) },
         )
     }
 
@@ -196,6 +210,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             is Offers.Result.Ok -> r
         }
         val fare = currentFare()
+        val title = titleOf(fare)
         val total = ok.total.toDouble()
         launchSale(
             announce = "Generando oferta…",
@@ -203,7 +218,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             failText = "Oferta guardada. Error al imprimir ticket.",
             record = { comprobante ->
                 c.register.addOffer(total, comprobante)
-                LastTransaction(OFFER_NAME, total, comprobante, fare == FareKind.SUNDAY, tipo = "ofertaMultiple", offerEntries = ok.entries, fareKind = fare.name)
+                LastTransaction(OFFER_NAME, total, comprobante, fare == FareKind.SUNDAY, tipo = "ofertaMultiple", offerEntries = ok.entries, fareKind = fare.name, fareTitle = title)
             },
             print = { last -> c.printer.printOffer(ok.entries, last.comprobante) },
         )
@@ -319,7 +334,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
                 when {
                     cargo != null -> c.printer.printCargo(cargo, last.comprobante, copies, reprint = true)
                     last.isOffer -> c.printer.printOffer(offer.orEmpty(), last.comprobante, reprint = true)
-                    else -> c.printer.printTicket(last.nombre, last.valor, last.comprobante, last.fare, reprint = true)
+                    else -> c.printer.printTicket(last.nombre, last.valor, last.comprobante, last.fareTitle ?: titleOf(last.fare), reprint = true)
                 }
             }
                 .onSuccess { if (!last.isCargo) hasReprinted.value = true; _messages.tryEmit(UiMessage("Ticket reimpreso", MessageKind.Success)) }

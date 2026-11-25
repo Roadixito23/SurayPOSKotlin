@@ -41,6 +41,8 @@ data class LastTransaction(
     val telefono: String? = null,
     /** `FareKind.name` de la tarifa cobrada; ausente en ventas antiguas y de Flutter, que solo traen [switchValue]. */
     val fareKind: String? = null,
+    /** Título de tarifa tal como se imprimió; la reimpresión lo repite aunque luego se renombre la tarifa. Null en ventas antiguas. */
+    val fareTitle: String? = null,
 ) {
     /** Tarifa de esta venta, para reimprimir con el título original. */
     val fare: FareKind get() = FareKind.fromStored(fareKind, switchValue)

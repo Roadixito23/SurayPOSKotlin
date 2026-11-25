@@ -69,6 +69,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import cl.suray.posbus.data.prefs.Tarifa
+import cl.suray.posbus.domain.FareKind
+import cl.suray.posbus.domain.FareTitle
+import cl.suray.posbus.domain.FareTitles
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -303,8 +306,20 @@ private fun PricesTab(state: SettingsUiState, vm: SettingsViewModel, report: (Re
     var editing by remember { mutableStateOf<Triple<Boolean, Int, Tarifa>?>(null) }
     var restore by remember { mutableStateOf<Boolean?>(null) }
 
+    var editingTitle by remember { mutableStateOf<FareKind?>(null) }
+
     @Composable
-    fun fares(title: String, sunday: Boolean, list: List<Tarifa>) = Section(title, painterResource(R.drawable.ic_money)) {
+    fun fares(kind: FareKind, title: FareTitle, sunday: Boolean, list: List<Tarifa>) = Section(
+        title.name,
+        painterResource(R.drawable.ic_money),
+        // La abreviatura de la tarifa única no se ve en Inicio (no hay interruptor).
+        subtitle = if (kind == FareKind.UNIFIED) "Nombre impreso en el ticket" else "Nombre impreso en el ticket · Inicio: ${title.short}",
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Nombre de la tarifa", Modifier.weight(1f), fontSize = 14.sp, color = Color(0xFF6B7C8C))
+            IconButton({ editingTitle = kind }) { Icon(Icons.Default.Edit, "Editar nombre de la tarifa", tint = SurayColors.Amber800) }
+        }
+        HorizontalDivider()
         list.forEachIndexed { i, t ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(t.nombre, Modifier.weight(1f))
@@ -323,8 +338,28 @@ private fun PricesTab(state: SettingsUiState, vm: SettingsViewModel, report: (Re
         if (!state.unifiedFare) Text("Se usan precios distintos los domingos y feriados, con detección automática.", fontSize = 12.sp, color = Color(0xFF6B7C8C))
     }
     // Con tarifa única solo hay una lista; los precios de domingo se conservan y reaparecen al desactivarla.
-    fares(if (state.unifiedFare) "Precios (toda la semana)" else "Lunes a sábado", false, state.weekdayFares)
-    if (!state.unifiedFare) fares("Domingo y feriados", true, state.sundayFares)
+    if (state.unifiedFare) fares(FareKind.UNIFIED, state.unifiedTitle, false, state.weekdayFares)
+    else fares(FareKind.WEEKDAY, state.weekdayTitle, false, state.weekdayFares)
+    if (!state.unifiedFare) fares(FareKind.SUNDAY, state.sundayTitle, true, state.sundayFares)
+
+    editingTitle?.let { kind ->
+        val current = when (kind) {
+            FareKind.UNIFIED -> state.unifiedTitle
+            FareKind.WEEKDAY -> state.weekdayTitle
+            FareKind.SUNDAY -> state.sundayTitle
+        }
+        FareTitleDialog(
+            kind = kind,
+            current = current,
+            onSave = { name, short ->
+                val r = vm.saveFareTitle(kind, name, short)
+                if (r == null) { editingTitle = null; report(null, "Nombre de tarifa guardado") }
+                r
+            },
+            onReset = { vm.resetFareTitle(kind); editingTitle = null; report(null, "Nombre de fábrica restaurado") },
+            onCancel = { editingTitle = null },
+        )
+    }
 
     editing?.let { (sunday, index, t) ->
         var name by remember { mutableStateOf(t.nombre) }
@@ -363,10 +398,75 @@ private fun PricesTab(state: SettingsUiState, vm: SettingsViewModel, report: (Re
         AlertDialog(
             onDismissRequest = { restore = null },
             title = { Text("Restaurar tarifas") },
-            text = { Text("Se perderán los nombres y precios personalizados de ${if (sunday) "domingo" else "lunes a sábado"}.") },
+            text = {
+                val label = when {
+                    sunday -> state.sundayTitle.name
+                    state.unifiedFare -> state.unifiedTitle.name
+                    else -> state.weekdayTitle.name
+                }
+                Text("Se perderán los nombres y precios personalizados de «$label».")
+            },
             confirmButton = { TextButton({ vm.restoreDefaultFares(sunday); restore = null; report(null, "Tarifas restauradas") }) { Text("Restaurar") } },
             dismissButton = { TextButton({ restore = null }) { Text("Cancelar") } },
         )
+    }
+}
+
+/**
+ * Editor del nombre de una tarifa: el nombre se imprime en el ticket tal cual; la abreviatura titula el interruptor de
+ * Inicio (con tarifa única no hay interruptor, así que se oculta y se conserva la de fábrica). Valida en vivo.
+ */
+@Composable
+private fun FareTitleDialog(
+    kind: FareKind,
+    current: FareTitle,
+    onSave: (name: String, short: String) -> Rejection,
+    onReset: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val showShort = kind != FareKind.UNIFIED
+    var name by remember { mutableStateOf(current.name) }
+    var short by remember { mutableStateOf(current.short) }
+    var rejection by remember { mutableStateOf<String?>(null) }
+    val focus = rememberAutoFocus()
+    val validation = FareTitles.validate(name, short)
+    val liveError = (validation as? FareTitles.Result.Invalid)?.reason
+    fun save() {
+        if (validation is FareTitles.Result.Ok) rejection = onSave(name, short)
+    }
+
+    SurayDialogCard(
+        title = "Nombre de la tarifa",
+        onDismiss = onCancel,
+        confirmText = "Guardar",
+        onConfirm = ::save,
+        icon = painterResource(R.drawable.ic_money),
+        confirmEnabled = validation is FareTitles.Result.Ok,
+        error = rejection ?: liveError,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                name, { name = it.take(FareTitles.MAX_NAME + 4); rejection = null }, Modifier.fillMaxWidth().focusRequester(focus),
+                label = { Text("Nombre (se imprime en el ticket tal cual)") },
+                supportingText = { Text("${name.trim().length}/${FareTitles.MAX_NAME}") },
+                isError = name.trim().isEmpty() || name.trim().length > FareTitles.MAX_NAME,
+                singleLine = true, shape = SurayFieldShape, colors = surayFieldColors(),
+                keyboardOptions = KeyboardOptions(imeAction = if (showShort) ImeAction.Next else ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { save() }),
+            )
+            if (showShort) OutlinedTextField(
+                short, { short = it.take(FareTitles.MAX_SHORT + 2); rejection = null }, Modifier.fillMaxWidth(),
+                label = { Text("Abreviatura (interruptor de Inicio)") },
+                supportingText = { Text("${short.trim().length}/${FareTitles.MAX_SHORT}") },
+                isError = short.trim().isEmpty() || short.trim().length > FareTitles.MAX_SHORT,
+                singleLine = true, shape = SurayFieldShape, colors = surayFieldColors(),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { save() }),
+            )
+            TextButton(onReset, Modifier.fillMaxWidth()) {
+                Text("Restaurar nombre de fábrica (${kind.defaultTitle.name})", color = SurayColors.Amber900, textAlign = TextAlign.Center)
+            }
+        }
     }
 }
 

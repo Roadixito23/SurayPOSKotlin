@@ -94,7 +94,7 @@ object TicketLayouts {
         nombre: String,
         valor: Double,
         comprobante: String,
-        fare: FareKind,
+        fareTitle: String,
         nowMillis: Long,
         reprint: Boolean,
     ): TicketLayout {
@@ -103,7 +103,7 @@ object TicketLayouts {
         val date = "%02d/%02d/%04d".format(c.get(java.util.Calendar.DAY_OF_MONTH), c.get(java.util.Calendar.MONTH) + 1, c.get(java.util.Calendar.YEAR))
         return TicketLayout(
             numberLine = "N° $comprobante",
-            tariffLine = fare.ticketTitle,
+            tariffLine = fareTitle,
             tipo = nombre,
             valueLine = "Valor: $${formatClp(valor)}",
             time = time,

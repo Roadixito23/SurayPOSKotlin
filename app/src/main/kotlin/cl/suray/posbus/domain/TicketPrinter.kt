@@ -5,8 +5,8 @@ import cl.suray.posbus.data.prefs.OfferEntry
 
 /** Impresión de tickets en papel de 58 mm. Todas las operaciones lanzan excepción si no se imprimió. */
 interface TicketPrinter {
-    /** La venta ya está guardada y no se revierte si falla. */
-    suspend fun printTicket(nombre: String, valor: Double, comprobante: String, fare: FareKind, reprint: Boolean = false)
+    /** [fareTitle] se imprime tal cual (título vigente o el original al reimprimir). La venta ya está guardada y no se revierte si falla. */
+    suspend fun printTicket(nombre: String, valor: Double, comprobante: String, fareTitle: String, reprint: Boolean = false)
 
     suspend fun printOffer(entries: List<OfferEntry>, comprobante: String, reprint: Boolean = false)
 
@@ -16,7 +16,7 @@ interface TicketPrinter {
 
 object UnavailableTicketPrinter : TicketPrinter {
     private fun fail(): Nothing = throw UnsupportedOperationException("Impresión no disponible")
-    override suspend fun printTicket(nombre: String, valor: Double, comprobante: String, fare: FareKind, reprint: Boolean) = fail()
+    override suspend fun printTicket(nombre: String, valor: Double, comprobante: String, fareTitle: String, reprint: Boolean) = fail()
     override suspend fun printOffer(entries: List<OfferEntry>, comprobante: String, reprint: Boolean) = fail()
     override suspend fun printCargo(cargo: CargoData, comprobante: String, copies: List<CargoCopy>, reprint: Boolean) = fail()
 }

@@ -5,6 +5,9 @@ import androidx.lifecycle.ViewModelProvider
 import cl.suray.posbus.AppContainer
 import cl.suray.posbus.data.prefs.AppPrefs
 import cl.suray.posbus.data.prefs.Tarifa
+import cl.suray.posbus.domain.FareKind
+import cl.suray.posbus.domain.FareTitle
+import cl.suray.posbus.domain.FareTitles
 import cl.suray.posbus.domain.SettingsInput
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,6 +17,9 @@ data class SettingsUiState(
     val weekdayFares: List<Tarifa> = emptyList(),
     val sundayFares: List<Tarifa> = emptyList(),
     val unifiedFare: Boolean = true,
+    val unifiedTitle: FareTitle = FareKind.UNIFIED.defaultTitle,
+    val weekdayTitle: FareTitle = FareKind.WEEKDAY.defaultTitle,
+    val sundayTitle: FareTitle = FareKind.SUNDAY.defaultTitle,
     val terminalId: Int = 1,
     val comprobanteNumber: Int = 0,
     val sumUpEnabled: Boolean = true,
@@ -37,6 +43,9 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
         weekdayFares = c.prefs.weekdayFares,
         sundayFares = c.prefs.sundayFares,
         unifiedFare = c.prefs.unifiedFare,
+        unifiedTitle = c.prefs.fareTitle(FareKind.UNIFIED),
+        weekdayTitle = c.prefs.fareTitle(FareKind.WEEKDAY),
+        sundayTitle = c.prefs.fareTitle(FareKind.SUNDAY),
         terminalId = c.prefs.ticketId,
         comprobanteNumber = c.prefs.comprobanteNumber,
         sumUpEnabled = c.prefs.sumUpEnabled,
@@ -80,6 +89,23 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
 
     fun restoreDefaultFares(sunday: Boolean) {
         if (sunday) c.prefs.sundayFares = AppPrefs.DEFAULT_SUNDAY_FARES else c.prefs.weekdayFares = AppPrefs.DEFAULT_WEEKDAY_FARES
+        changed()
+    }
+
+    /** Guarda el nombre y la abreviatura de [kind]; devuelve el motivo si no son válidos. */
+    fun saveFareTitle(kind: FareKind, name: String, short: String): Rejection =
+        when (val r = FareTitles.validate(name, short)) {
+            is FareTitles.Result.Invalid -> r.reason
+            is FareTitles.Result.Ok -> {
+                c.prefs.setFareTitle(kind, r.title)
+                changed()
+                null
+            }
+        }
+
+    /** Vuelve al nombre y abreviatura de fábrica de [kind]. */
+    fun resetFareTitle(kind: FareKind) {
+        c.prefs.setFareTitle(kind, null)
         changed()
     }
 

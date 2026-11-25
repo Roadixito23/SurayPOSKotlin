@@ -51,6 +51,7 @@ import cl.suray.posbus.data.prefs.AppPrefs
 import cl.suray.posbus.domain.ButtonColorDefaults
 import cl.suray.posbus.domain.ButtonColorSpec
 import cl.suray.posbus.domain.ButtonKind
+import cl.suray.posbus.domain.FareKind
 import cl.suray.posbus.ui.home.toColors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -72,6 +73,9 @@ class ButtonColorsViewModel(private val c: AppContainer) : ViewModel() {
         val sun = if (c.prefs.unifiedFare) emptyList() else c.prefs.sundayFares.mapIndexed { i, t -> item(ButtonKind.Sunday, i, t.nombre) }
         return week + sun + listOf(item(ButtonKind.Otros, 0, "Oferta"), item(ButtonKind.Otros, 1, "Cargo"))
     }
+
+    /** Nombre vigente de la tarifa [kind] (editable en Ajustes → Precios) para titular los grupos. */
+    fun fareName(kind: FareKind): String = c.prefs.fareTitle(kind).name
 
     private fun changed() {
         _items.value = load()
@@ -110,8 +114,8 @@ fun ButtonColorsScreen(vm: ButtonColorsViewModel, onBack: () -> Unit) {
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)) {
             val unified = items.none { it.kind == ButtonKind.Sunday }
             val groups = listOf(
-                ButtonKind.Weekday to if (unified) "Tarifas" else "Lunes a sábado",
-                ButtonKind.Sunday to "Domingo y feriados",
+                ButtonKind.Weekday to vm.fareName(if (unified) FareKind.UNIFIED else FareKind.WEEKDAY),
+                ButtonKind.Sunday to vm.fareName(FareKind.SUNDAY),
                 ButtonKind.Otros to "Otros",
             )
             groups.filter { (kind, _) -> !(unified && kind == ButtonKind.Sunday) }.forEach { (kind, title) ->

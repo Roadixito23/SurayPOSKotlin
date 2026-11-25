@@ -68,6 +68,58 @@ class FareModeTest {
         assertEquals(false, AppPrefs(sp).unifiedFare)
         assertEquals(false, sp.data["tarifa_unica"])
     }
+
+    // --- Títulos editables -------------------------------------------------------------------
+
+    @Test fun fareTitlesDefaultToTheCurrentTicketText() {
+        val prefs = AppPrefs(InMemoryPrefs())
+        assertEquals(FareTitle("TARIFA ÚNICA", "Única"), prefs.fareTitle(FareKind.UNIFIED))
+        assertEquals(FareTitle("TARIFA LUNES A SÁBADO", "L-S"), prefs.fareTitle(FareKind.WEEKDAY))
+        assertEquals(FareTitle("TARIFA DOMINGO/FERIADO", "D/F"), prefs.fareTitle(FareKind.SUNDAY))
+    }
+
+    @Test fun fareTitleIsSavedAsWrittenAndCanBeReset() {
+        val sp = InMemoryPrefs()
+        AppPrefs(sp).setFareTitle(FareKind.UNIFIED, FareTitle("Tarifa Única 2026", "Ú"))
+        assertEquals(FareTitle("Tarifa Única 2026", "Ú"), AppPrefs(sp).fareTitle(FareKind.UNIFIED))
+        assertEquals("Tarifa Única 2026", sp.data["fare_title_unified"])
+        // Las otras tarifas no cambian.
+        assertEquals(FareKind.WEEKDAY.defaultTitle, AppPrefs(sp).fareTitle(FareKind.WEEKDAY))
+
+        AppPrefs(sp).setFareTitle(FareKind.UNIFIED, null)
+        assertEquals(FareKind.UNIFIED.defaultTitle, AppPrefs(sp).fareTitle(FareKind.UNIFIED))
+        assertTrue(sp.data.keys.none { it.startsWith("fare_") })
+    }
+
+    @Test fun blankStoredTitleFallsBackToDefault() {
+        val sp = InMemoryPrefs()
+        sp.data["fare_title_sunday"] = "  "
+        assertEquals(FareKind.SUNDAY.defaultTitle, AppPrefs(sp).fareTitle(FareKind.SUNDAY))
+    }
+
+    @Test fun validateTrimsAndAcceptsUpToTheLimits() {
+        val r = FareTitles.validate("  Tarifa Única  ", " L-S ")
+        assertEquals(FareTitles.Result.Ok(FareTitle("Tarifa Única", "L-S")), r)
+        val exact = "x".repeat(FareTitles.MAX_NAME)
+        assertEquals(FareTitles.Result.Ok(FareTitle(exact, "abcd")), FareTitles.validate(exact, "abcd"))
+    }
+
+    @Test fun validateRejectsEmptyOrTooLong() {
+        assertTrue(FareTitles.validate("", "L-S") is FareTitles.Result.Invalid)
+        assertTrue(FareTitles.validate("   ", "L-S") is FareTitles.Result.Invalid)
+        assertTrue(FareTitles.validate("x".repeat(FareTitles.MAX_NAME + 1), "L-S") is FareTitles.Result.Invalid)
+        assertTrue(FareTitles.validate("Tarifa", "") is FareTitles.Result.Invalid)
+        assertTrue(FareTitles.validate("Tarifa", "abcde") is FareTitles.Result.Invalid)
+    }
+
+    @Test fun lastTransactionKeepsThePrintedTitle() {
+        val sp = InMemoryPrefs()
+        AppPrefs(sp).lastTransaction = LastTransaction(
+            "Público General", 3600.0, "01-000012", switchValue = false,
+            fareKind = FareKind.UNIFIED.name, fareTitle = "Tarifa Verano",
+        )
+        assertEquals("Tarifa Verano", AppPrefs(sp).lastTransaction!!.fareTitle)
+    }
 }
 
 /** SharedPreferences en memoria, solo para estos tests (privado para no chocar con los fakes de otras ramas). */

@@ -305,7 +305,7 @@ private fun StatusBand(state: HomeUiState, onRate: (Boolean) -> Unit) {
         ) {
             if (state.autoRate) Text("⚡", fontSize = 12.sp, color = Color(0xFFFFC107), modifier = Modifier.padding(end = 3.dp))
             Text(
-                if (state.sundayRate) "D/F" else "L-S",
+                state.fareShort,
                 fontFamily = Hemiheads, fontSize = 15.sp,
                 color = if (state.sundayRate) Color.Red else Color.White,
             )

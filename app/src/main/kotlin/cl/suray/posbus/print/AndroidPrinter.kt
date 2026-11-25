@@ -20,7 +20,6 @@ import cl.suray.posbus.data.prefs.OfferEntry
 import cl.suray.posbus.domain.CargoCopy
 import cl.suray.posbus.domain.CargoTicketLayout
 import cl.suray.posbus.domain.CashReport
-import cl.suray.posbus.domain.FareKind
 import cl.suray.posbus.domain.Clock
 import cl.suray.posbus.domain.ReportLayouts
 import cl.suray.posbus.domain.PdfFilePrinter
@@ -48,8 +47,8 @@ class AndroidPrinter(
     private val pdfDir: File = File(context.filesDir, "pdfs"),
 ) : TicketPrinter, ReportPrinter, PdfFilePrinter {
 
-    override suspend fun printTicket(nombre: String, valor: Double, comprobante: String, fare: FareKind, reprint: Boolean) {
-        val t = TicketLayouts.regular(nombre, valor, comprobante, fare, clock.nowMillis(), reprint)
+    override suspend fun printTicket(nombre: String, valor: Double, comprobante: String, fareTitle: String, reprint: Boolean) {
+        val t = TicketLayouts.regular(nombre, valor, comprobante, fareTitle, clock.nowMillis(), reprint)
         val bytes = withContext(Dispatchers.Default) {
             val res = context.resources
             val logo = BitmapFactory.decodeResource(res, R.drawable.logobkwt)

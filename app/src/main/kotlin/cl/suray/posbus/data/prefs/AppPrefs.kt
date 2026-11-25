@@ -5,6 +5,8 @@ import android.content.SharedPreferences
 import cl.suray.posbus.data.backup.BackupPrefs
 import cl.suray.posbus.data.backup.PrefEntry
 import cl.suray.posbus.data.backup.PrefType
+import cl.suray.posbus.domain.FareKind
+import cl.suray.posbus.domain.FareTitle
 import cl.suray.posbus.domain.CardPaymentStore
 import cl.suray.posbus.domain.ComprobanteStore
 import cl.suray.posbus.domain.HolidayStore
@@ -64,6 +66,26 @@ class AppPrefs(private val sp: SharedPreferences) :
     var unifiedFare: Boolean
         get() = sp.getBoolean(KEY_UNIFIED_FARE, true)
         set(value) = sp.edit().putBoolean(KEY_UNIFIED_FARE, value).apply()
+
+    /** Título vigente de [kind] (`fare_title_*` / `fare_short_*`); sin clave guardada, el de fábrica. */
+    fun fareTitle(kind: FareKind): FareTitle {
+        val d = kind.defaultTitle
+        return FareTitle(
+            name = sp.getString(fareTitleKey(kind), null)?.takeIf { it.isNotBlank() } ?: d.name,
+            short = sp.getString(fareShortKey(kind), null)?.takeIf { it.isNotBlank() } ?: d.short,
+        )
+    }
+
+    /** Guarda el título de [kind]; null restaura el de fábrica. Validar antes con `FareTitles.validate`. */
+    fun setFareTitle(kind: FareKind, title: FareTitle?) {
+        sp.edit().apply {
+            if (title == null) remove(fareTitleKey(kind)).remove(fareShortKey(kind))
+            else putString(fareTitleKey(kind), title.name).putString(fareShortKey(kind), title.short)
+        }.apply()
+    }
+
+    private fun fareTitleKey(kind: FareKind) = "$KEY_FARE_TITLE${kind.name.lowercase()}"
+    private fun fareShortKey(kind: FareKind) = "$KEY_FARE_SHORT${kind.name.lowercase()}"
 
     // --- Comprobante --------------------------------------------------------------------------
 
@@ -247,6 +269,8 @@ class AppPrefs(private val sp: SharedPreferences) :
         const val KEY_PASAJES = "pasajes"
         const val KEY_SUNDAY_PASAJES = "sunday_pasajes"
         const val KEY_UNIFIED_FARE = "tarifa_unica"
+        const val KEY_FARE_TITLE = "fare_title_"
+        const val KEY_FARE_SHORT = "fare_short_"
         const val KEY_COMPROBANTE_NUMBER = "comprobanteNumber"
         const val KEY_TICKET_ID = "ticketId"
         const val KEY_HOLIDAYS_CACHE = "holidays_cache_"
