@@ -8,7 +8,7 @@ Este plan consolida y actualiza `~/.claude/plans/necesito-que-hagas-un-mossy-plu
 ## Estado actual verificado
 - JDK 17, `ANDROID_HOME=~/Android/Sdk` con cmdline-tools, platform-tools (adb), `platforms/android-35` y `android-36`, build-tools 34/35/36. Falta solo aceptar/confirmar licencias si Gradle lo pide.
 - No hay emulador ni system-images: se prueba solo en el equipo físico.
-- Ya existe `~/projects/Suray/SurayPOSKotlin` (sin commits): Gradle wrapper, `libs.versions.toml`, `local.properties`, manifest, `MainActivity.kt`, y la capa de datos inicial (`data/db`: Entities, Daos, AppDatabase; `data/prefs`: AppPrefs, Models; test instrumentado `DataLayerTest`). Continuar desde ahí, no empezar de cero.
+- Ya existe `~/Proyectos/suray-android/SurayPOSKotlin` (sin commits): Gradle wrapper, `libs.versions.toml`, `local.properties`, manifest, `MainActivity.kt`, y la capa de datos inicial (`data/db`: Entities, Daos, AppDatabase; `data/prefs`: AppPrefs, Models; test instrumentado `DataLayerTest`). Continuar desde ahí, no empezar de cero.
 
 ## Decisiones
 - UI Jetpack Compose (Material 3), minSdk 23, targetSdk 34, compileSdk 35 (AGP 8.7.3, Kotlin 2.1.0, Gradle 8.11.1). Una Activity + Navigation Compose, MVVM con StateFlow, DI manual.

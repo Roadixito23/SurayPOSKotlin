@@ -1,11 +1,11 @@
 # Migración SurayPOSBus (Flutter) → Kotlin nativo — estado al 2026-10-21
 
 Plan original: `/home/road/claude_plans/plan-flutter-a-kotlin.md` (y `~/.claude/plans/necesito-que-hagas-un-mossy-plum.md`).
-Proyecto Kotlin: `~/projects/Suray/SurayPOSKotlin` (applicationId `cl.suray.posbus`). El proyecto Flutter (`~/projects/Suray/SurayPOSBus`) no se ha tocado.
+Proyecto Kotlin: `~/Proyectos/suray-android/SurayPOSKotlin` (applicationId `cl.suray.posbus`). El proyecto Flutter (`~/Proyectos/suray-android/SurayPOSBus`) no se ha tocado.
 
 ## Cómo retomar (comandos)
 ```
-cd ~/projects/Suray/SurayPOSKotlin
+cd ~/Proyectos/suray-android/SurayPOSKotlin
 ./gradlew assembleDebug                      # compila (la 1.ª vez ~3 min)
 ./gradlew testDebugUnitTest                  # tests JVM (~62), corren en el PC
 ./gradlew connectedDebugAndroidTest          # tests en el Sunmi (necesita el equipo despierto)
