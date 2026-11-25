@@ -82,10 +82,10 @@ class CloseRegister(
         val transactions = register.ordered()
         val date = ReportDates.determine(transactions, clock.nowMillis(), timeZone)
 
-        runCatching { printer().printReport(CashReport(transactions, register.total(), date)) }
+        runCatchingCancellable { printer().printReport(CashReport(transactions, register.total(), date)) }
             .onFailure { return CloseResult.PrintFailed(it) }
 
-        val saved = runCatching { closing.saveManualClosing(transactions, date.day) }
+        val saved = runCatchingCancellable { closing.saveManualClosing(transactions, date.day) }
             .getOrElse { return CloseResult.SaveFailed(it) }
         register.clear()
         return CloseResult.Done(saved)

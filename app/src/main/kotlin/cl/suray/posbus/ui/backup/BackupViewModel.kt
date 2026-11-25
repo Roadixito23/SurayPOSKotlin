@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import cl.suray.posbus.AppContainer
 import cl.suray.posbus.data.backup.BackupException
 import cl.suray.posbus.domain.PdfFileInfo
+import cl.suray.posbus.domain.runCatchingCancellable
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -73,7 +74,7 @@ class BackupViewModel(private val c: AppContainer) : ViewModel() {
         if (_state.value.busy) return
         viewModelScope.launch {
             _state.update { it.copy(busy = true) }
-            runCatching { withContext(Dispatchers.IO) { block() } }
+            runCatchingCancellable { withContext(Dispatchers.IO) { block() } }
                 .onFailure { _messages.tryEmit(if (it is BackupException) it.message ?: label else "Error: ${it.message}") }
             _state.update { it.copy(busy = false) }
             reload()

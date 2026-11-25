@@ -12,9 +12,11 @@ import cl.suray.posbus.domain.ComprobanteStore
 import cl.suray.posbus.domain.HolidayStore
 import cl.suray.posbus.domain.LastDateStore
 import cl.suray.posbus.domain.OpenRegisterStore
+import cl.suray.posbus.domain.PrefsBatch
 import cl.suray.posbus.domain.SecurityStore
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
+import java.io.IOException
 import kotlinx.serialization.json.Json
 
 /**
@@ -30,13 +32,78 @@ import kotlinx.serialization.json.Json
  * que bloquear unos milisegundos es aceptable. El resto de preferencias sigue con `apply()`.
  */
 class AppPrefs(private val sp: SharedPreferences) :
-    OpenRegisterStore, LastDateStore, ComprobanteStore, HolidayStore, SecurityStore, CardPaymentStore, BackupPrefs {
+    OpenRegisterStore, LastDateStore, ComprobanteStore, HolidayStore, SecurityStore, CardPaymentStore, BackupPrefs, PrefsBatch {
 
     constructor(context: Context) : this(
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE),
     )
 
     private val json = Json { ignoreUnknownKeys = true }
+
+    // --- Lotes: varias escrituras confirmadas juntas con un solo commit() -----------------------
+
+    private val batchLock = Any()
+    @Volatile private var batchEditor: TrackingEditor? = null
+    @Volatile private var batchOwner: Thread? = null
+
+    /** Lo escrito en el lote en curso (null = borrado); así las lecturas del mismo hilo ven sus propias escrituras. */
+    private val pending = HashMap<String, Any?>()
+
+    /** Editor que recuerda en [pending] lo escrito, para poder leerlo antes del commit. */
+    private inner class TrackingEditor(private val d: SharedPreferences.Editor) : SharedPreferences.Editor by d {
+        override fun putString(key: String, value: String?) = apply { pending[key] = value; d.putString(key, value) }
+        override fun putInt(key: String, value: Int) = apply { pending[key] = value; d.putInt(key, value) }
+        override fun putLong(key: String, value: Long) = apply { pending[key] = value; d.putLong(key, value) }
+        override fun putFloat(key: String, value: Float) = apply { pending[key] = value; d.putFloat(key, value) }
+        override fun putBoolean(key: String, value: Boolean) = apply { pending[key] = value; d.putBoolean(key, value) }
+        override fun remove(key: String) = apply { pending[key] = null; d.remove(key) }
+    }
+
+    /**
+     * Agrupa todas las escrituras de [block] en un único `commit()` síncrono: o se guarda todo o nada.
+     * Si [block] lanza una excepción no se escribe nada; si `commit()` falla se lanza [IOException].
+     * Es reentrante: un lote anidado se une al exterior, que es el único que confirma.
+     * Solo el hilo que abrió el lote escribe en él; los demás hilos siguen usando `apply()`.
+     */
+    override fun <T> batch(block: () -> T): T = synchronized(batchLock) {
+        if (batchEditor != null) return@synchronized block()
+        val editor = TrackingEditor(sp.edit())
+        batchEditor = editor
+        batchOwner = Thread.currentThread()
+        try {
+            val result = block()
+            if (!editor.commit()) throw IOException("No se pudo guardar en el almacenamiento")
+            result
+        } finally {
+            batchEditor = null
+            batchOwner = null
+            pending.clear()
+        }
+    }
+
+    private fun inBatch() = batchEditor != null && batchOwner === Thread.currentThread()
+
+    /**
+     * Escribe en el lote en curso (se confirma con su único `commit()`) o, fuera de uno, de inmediato:
+     * con `commit()` síncrono si [durable] (datos de caja) o con `apply()` en el resto.
+     */
+    private fun edit(durable: Boolean = false, block: SharedPreferences.Editor.() -> Unit) {
+        if (inBatch()) { batchEditor!!.block(); return }
+        val e = sp.edit().apply(block)
+        if (durable) e.commit() else e.apply()
+    }
+
+    private fun <T> peek(key: String, committed: () -> T, whenRemoved: T): T {
+        if (!inBatch() || !pending.containsKey(key)) return committed()
+        @Suppress("UNCHECKED_CAST")
+        return (pending[key] as T?) ?: whenRemoved
+    }
+
+    private fun getStr(key: String, def: String?): String? = peek(key, { sp.getString(key, def) }, def)
+    private fun getIntV(key: String, def: Int): Int = peek(key, { sp.getInt(key, def) }, def)
+    private fun getLongV(key: String, def: Long): Long = peek(key, { sp.getLong(key, def) }, def)
+    private fun getFloatV(key: String, def: Float): Float = peek(key, { sp.getFloat(key, def) }, def)
+    private fun getBool(key: String, def: Boolean): Boolean = peek(key, { sp.getBoolean(key, def) }, def)
 
     // --- Caja abierta -------------------------------------------------------------------------
 
@@ -45,12 +112,12 @@ class AppPrefs(private val sp: SharedPreferences) :
         set(value) = encodeList(KEY_OPEN_TRANSACTIONS, OpenTransaction.serializer(), value, durable = true)
 
     override var openNextId: Int
-        get() = sp.getInt(KEY_OPEN_NEXT_ID, 1)
-        set(value) = sp.edit().putInt(KEY_OPEN_NEXT_ID, value).save(durable = true)
+        get() = getIntV(KEY_OPEN_NEXT_ID, 1)
+        set(value) = edit(durable = true) { putInt(KEY_OPEN_NEXT_ID, value) }
 
     override var lastTransactionDate: String?
-        get() = sp.getString(KEY_LAST_TRANSACTION_DATE, null)
-        set(value) = sp.edit().putString(KEY_LAST_TRANSACTION_DATE, value).save(durable = true)
+        get() = getStr(KEY_LAST_TRANSACTION_DATE, null)
+        set(value) = edit(durable = true) { putString(KEY_LAST_TRANSACTION_DATE, value) }
 
     // --- Tarifas ------------------------------------------------------------------------------
 
@@ -106,39 +173,39 @@ class AppPrefs(private val sp: SharedPreferences) :
     // --- Comprobante --------------------------------------------------------------------------
 
     override var comprobanteNumber: Int
-        get() = sp.getInt(KEY_COMPROBANTE_NUMBER, 0)
-        set(value) = sp.edit().putInt(KEY_COMPROBANTE_NUMBER, value).save(durable = true)
+        get() = getIntV(KEY_COMPROBANTE_NUMBER, 0)
+        set(value) = edit(durable = true) { putInt(KEY_COMPROBANTE_NUMBER, value) }
 
     override var ticketId: Int
-        get() = sp.getInt(KEY_TICKET_ID, 1)
-        set(value) = sp.edit().putInt(KEY_TICKET_ID, value).save(durable = true)
+        get() = getIntV(KEY_TICKET_ID, 1)
+        set(value) = edit(durable = true) { putInt(KEY_TICKET_ID, value) }
 
     // --- Feriados -----------------------------------------------------------------------------
 
-    override fun holidaysCache(year: Int): String? = sp.getString("$KEY_HOLIDAYS_CACHE$year", null)
+    override fun holidaysCache(year: Int): String? = getStr("$KEY_HOLIDAYS_CACHE$year", null)
     override fun setHolidaysCache(year: Int, value: String) =
-        sp.edit().putString("$KEY_HOLIDAYS_CACHE$year", value).apply()
+        edit { putString("$KEY_HOLIDAYS_CACHE$year", value) }
 
-    override fun holidaysFungible(year: Int): Boolean = sp.getBoolean("$KEY_HOLIDAYS_FUNGIBLE$year", true)
+    override fun holidaysFungible(year: Int): Boolean = getBool("$KEY_HOLIDAYS_FUNGIBLE$year", true)
     override fun setHolidaysFungible(year: Int, value: Boolean) =
-        sp.edit().putBoolean("$KEY_HOLIDAYS_FUNGIBLE$year", value).apply()
+        edit { putBoolean("$KEY_HOLIDAYS_FUNGIBLE$year", value) }
 
     override fun clearHolidays(year: Int) {
-        sp.edit().remove("$KEY_HOLIDAYS_CACHE$year").remove("$KEY_HOLIDAYS_FUNGIBLE$year").apply()
+        edit { remove("$KEY_HOLIDAYS_CACHE$year").remove("$KEY_HOLIDAYS_FUNGIBLE$year") }
     }
 
     // --- Pagos con tarjeta (por día, yyyy-MM-dd) ----------------------------------------------
 
-    override fun cardPayments(date: String): String? = sp.getString("$KEY_CARD_PAYMENTS$date", null)
+    override fun cardPayments(date: String): String? = getStr("$KEY_CARD_PAYMENTS$date", null)
     override fun setCardPayments(date: String, value: String) =
-        sp.edit().putString("$KEY_CARD_PAYMENTS$date", value).apply()
+        edit { putString("$KEY_CARD_PAYMENTS$date", value) }
 
     /** Borra los pagos de días anteriores a [today] (yyyy-MM-dd; el orden lexicográfico sirve). */
     fun clearCardPaymentsBefore(today: String) {
         val stale = sp.all.keys.filter {
             it.startsWith(KEY_CARD_PAYMENTS) && it.removePrefix(KEY_CARD_PAYMENTS) < today
         }
-        if (stale.isNotEmpty()) sp.edit().apply { stale.forEach(::remove) }.apply()
+        if (stale.isNotEmpty()) edit { stale.forEach { remove(it) } }
     }
 
     // --- NFC / SumUp --------------------------------------------------------------------------
@@ -148,18 +215,18 @@ class AppPrefs(private val sp: SharedPreferences) :
         set(value) = encodeList(KEY_LINKED_NFC_CARDS, String.serializer(), value)
 
     var sumUpEnabled: Boolean
-        get() = sp.getBoolean(KEY_SUMUP_ENABLED, true)
-        set(value) = sp.edit().putBoolean(KEY_SUMUP_ENABLED, value).apply()
+        get() = getBool(KEY_SUMUP_ENABLED, true)
+        set(value) = edit { putBoolean(KEY_SUMUP_ENABLED, value) }
 
     /** Sin valor por defecto: la clave de afiliado solo se escribe en Ajustes, nunca va en el código ni en el APK. */
     var sumUpAffiliateKey: String?
-        get() = sp.getString(KEY_SUMUP_AFFILIATE_KEY, null)
-        set(value) = sp.edit().putString(KEY_SUMUP_AFFILIATE_KEY, value).apply()
+        get() = getStr(KEY_SUMUP_AFFILIATE_KEY, null)
+        set(value) = edit { putString(KEY_SUMUP_AFFILIATE_KEY, value) }
 
     // --- Última venta (para anular / reimprimir) ------------------------------------------------
 
     var lastTransaction: LastTransaction?
-        get() = sp.getString(KEY_LAST_TRANSACTION, null)?.let {
+        get() = getStr(KEY_LAST_TRANSACTION, null)?.let {
             runCatching { json.decodeFromString(LastTransaction.serializer(), it) }.getOrNull()
         }
         set(value) = putOrRemove(
@@ -170,7 +237,7 @@ class AppPrefs(private val sp: SharedPreferences) :
 
     // --- Colores de botones (`button_colors_{weekday|sunday|otros}_N`) -------------------------
 
-    fun buttonColorsJson(key: String): String? = sp.getString("button_colors_$key", null)
+    fun buttonColorsJson(key: String): String? = getStr("button_colors_$key", null)
 
     /** `json == null` borra la personalización y el botón vuelve a su color de fábrica. */
     fun setButtonColorsJson(key: String, json: String?) = putOrRemove("button_colors_$key", json)
@@ -178,51 +245,51 @@ class AppPrefs(private val sp: SharedPreferences) :
     // --- Apariencia / PDF ---------------------------------------------------------------------
 
     var showIcons: Boolean
-        get() = sp.getBoolean(KEY_SHOW_ICONS, true)
-        set(value) = sp.edit().putBoolean(KEY_SHOW_ICONS, value).apply()
+        get() = getBool(KEY_SHOW_ICONS, true)
+        set(value) = edit { putBoolean(KEY_SHOW_ICONS, value) }
 
     var buttonOpacity: Float
-        get() = sp.getFloat(KEY_BUTTON_OPACITY, 1f)
-        set(value) = sp.edit().putFloat(KEY_BUTTON_OPACITY, value).apply()
+        get() = getFloatV(KEY_BUTTON_OPACITY, 1f)
+        set(value) = edit { putFloat(KEY_BUTTON_OPACITY, value) }
 
     var iconSpacing: Float
-        get() = sp.getFloat(KEY_ICON_SPACING, 1f)
-        set(value) = sp.edit().putFloat(KEY_ICON_SPACING, value).apply()
+        get() = getFloatV(KEY_ICON_SPACING, 1f)
+        set(value) = edit { putFloat(KEY_ICON_SPACING, value) }
 
     var textSizeMultiplier: Float
-        get() = sp.getFloat(KEY_TEXT_SIZE_MULTIPLIER, 0.8f)
-        set(value) = sp.edit().putFloat(KEY_TEXT_SIZE_MULTIPLIER, value).apply()
+        get() = getFloatV(KEY_TEXT_SIZE_MULTIPLIER, 0.8f)
+        set(value) = edit { putFloat(KEY_TEXT_SIZE_MULTIPLIER, value) }
 
     var pdfEndMargin: Float
-        get() = sp.getFloat(KEY_PDF_END_MARGIN, DEFAULT_PDF_END_MARGIN)
-        set(value) = sp.edit().putFloat(KEY_PDF_END_MARGIN, value).apply()
+        get() = getFloatV(KEY_PDF_END_MARGIN, DEFAULT_PDF_END_MARGIN)
+        set(value) = edit { putFloat(KEY_PDF_END_MARGIN, value) }
 
     /** Abreviatura de tarifa para el PDF; la clave de preferencia es el nombre de la tarifa (como en Flutter). */
-    fun abbreviation(name: String): String = sp.getString(name, null) ?: DEFAULT_ABBREVIATIONS[name] ?: name
+    fun abbreviation(name: String): String = getStr(name, null) ?: DEFAULT_ABBREVIATIONS[name] ?: name
 
-    fun setAbbreviation(name: String, value: String) = sp.edit().putString(name, value).apply()
+    fun setAbbreviation(name: String, value: String) = edit { putString(name, value) }
 
     // --- Seguridad ----------------------------------------------------------------------------
 
     override var password: String?
-        get() = sp.getString(KEY_PASSWORD, null)
+        get() = getStr(KEY_PASSWORD, null)
         set(value) = putOrRemove(KEY_PASSWORD, value)
 
     override var settingsPassword: String?
-        get() = sp.getString(KEY_SETTINGS_PASSWORD, null)
+        get() = getStr(KEY_SETTINGS_PASSWORD, null)
         set(value) = putOrRemove(KEY_SETTINGS_PASSWORD, value)
 
     override var comprobanteSettingsPassword: String?
-        get() = sp.getString(KEY_COMPROBANTE_SETTINGS_PASSWORD, null)
+        get() = getStr(KEY_COMPROBANTE_SETTINGS_PASSWORD, null)
         set(value) = putOrRemove(KEY_COMPROBANTE_SETTINGS_PASSWORD, value)
 
     override var failedAttempts: Int
-        get() = sp.getInt(KEY_FAILED_ATTEMPTS, 0)
-        set(value) = sp.edit().putInt(KEY_FAILED_ATTEMPTS, value).apply()
+        get() = getIntV(KEY_FAILED_ATTEMPTS, 0)
+        set(value) = edit { putInt(KEY_FAILED_ATTEMPTS, value) }
 
     override var lastLockTime: Long
-        get() = sp.getLong(KEY_LAST_LOCK_TIME, 0L)
-        set(value) = sp.edit().apply { if (value > 0L) putLong(KEY_LAST_LOCK_TIME, value) else remove(KEY_LAST_LOCK_TIME) }.apply()
+        get() = getLongV(KEY_LAST_LOCK_TIME, 0L)
+        set(value) = edit { if (value > 0L) putLong(KEY_LAST_LOCK_TIME, value) else remove(KEY_LAST_LOCK_TIME) }
 
     // --- Respaldo -----------------------------------------------------------------------------
 
@@ -248,13 +315,9 @@ class AppPrefs(private val sp: SharedPreferences) :
 
     // --- Utilidades ---------------------------------------------------------------------------
 
-    /** [durable] = true escribe con `commit()` (ver "Escritura síncrona" en el KDoc de la clase). */
+    /** [durable] = true escribe con `commit()` fuera de un lote (ver "Escritura síncrona" en el KDoc de la clase). */
     private fun putOrRemove(key: String, value: String?, durable: Boolean = false) {
-        sp.edit().apply { if (value == null) remove(key) else putString(key, value) }.save(durable)
-    }
-
-    private fun SharedPreferences.Editor.save(durable: Boolean) {
-        if (durable) commit() else apply()
+        edit(durable) { if (value == null) remove(key) else putString(key, value) }
     }
 
     private fun <T> decodeList(
@@ -262,7 +325,7 @@ class AppPrefs(private val sp: SharedPreferences) :
         serializer: kotlinx.serialization.KSerializer<T>,
         default: List<T>,
     ): List<T> {
-        val raw = sp.getString(key, null) ?: return default
+        val raw = getStr(key, null) ?: return default
         return runCatching { json.decodeFromString(ListSerializer(serializer), raw) }.getOrDefault(default)
     }
 
@@ -272,7 +335,7 @@ class AppPrefs(private val sp: SharedPreferences) :
         value: List<T>,
         durable: Boolean = false,
     ) {
-        sp.edit().putString(key, json.encodeToString(ListSerializer(serializer), value)).save(durable)
+        edit(durable) { putString(key, json.encodeToString(ListSerializer(serializer), value)) }
     }
 
     companion object {
